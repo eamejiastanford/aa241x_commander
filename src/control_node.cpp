@@ -47,7 +47,7 @@ private:
 
 	// TODO: add any settings, etc, here
 	float _flight_alt = 20.0f;		// desired flight altitude [m] AGL (above takeoff)
-        float _yaw_angle = 0.0f;
+        float _thetaLine = 0.0f;
         float _xLine = 0.0f;
         float _yLine = 0.0f;
         float _vDes = 0.0f;
@@ -121,8 +121,8 @@ private:
 };
 
 
-ControlNode::ControlNode(float flight_alt, float yaw_angle, float xLine, float yLine, float vDes) :
-_flight_alt(flight_alt), _yaw_angle(yaw_angle), _xLine(xLine), _yLine(yLine), _vDes(vDes)
+ControlNode::ControlNode(float flight_alt, float thetaLine, float xLine, float yLine, float vDes) :
+_flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
 {
 
 
@@ -190,6 +190,34 @@ void ControlNode::waitForFCUConnection() {
 		ros::spinOnce();
 		rate.sleep();
 	}
+}
+
+// Computes euler angles from quaternions. Sequence is yaw, pitch, roll
+static void toEulerAngle(const float q[4], float& roll, float& pitch, float& yaw)
+{
+
+    float qw = q[0];
+    float qx = q[1];
+    float qy = q[2];
+    float qz = q[3];
+
+    // Yaw:
+    double sinr_cosp = +2.0 * (qw*qw + qy*qz);
+    double cosr_cosp = +1.0 - 2.0*(qx*qx + qy*qy);
+    yaw = atan2(sinr_cosp, cosr_cosp);
+
+    // Pitch:
+    double sinp = +2.0 * (qw*qy - qz*qx);
+    if (fabs(sinp) >=1)
+        pitch = copysign(M_PI / 2, sinp); //use 90 degrees if out of range
+    else
+        pitch = asin(sinp);
+
+    //Roll:
+    double siny_cosp = +2.0 * (qw*qz + qx*qy);
+    double cosy_cosp = +1.0 - 2.0*(qy*qy + qz*qz);
+    roll = atan2(siny_cosp,cosy_cosp);
+
 }
 
 
@@ -304,7 +332,24 @@ int ControlNode::run() {
                     // Get state for control
                     float xc = _current_local_pos.pose.position.x;
                     float yc = _current_local_pos.pose.position.y;
-                    float yaw = _current_local_pos.pose.orientation.yaw;
+                    float qx = _current_local_pos.pose.orientation.x;
+                    float qy = _current_local_pos.pose.orientation.y;
+                    float qz = _current_local_pos.pose.orientation.z;
+                    float qw = _current_local_pos.pose.orientation.w;
+
+
+                    float orient[4];
+                    float roll;
+                    float pitch;
+                    float yaw;
+
+                    orient[0] = qw;
+                    orient[1] = qx;
+                    orient[2] = qy;
+                    orient[3] = qz;
+
+                    toEulerAngle(orient, roll, pitch, yaw);
+
 
                     cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
 
@@ -317,28 +362,44 @@ int ControlNode::run() {
 //                            mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
 
                     // Compute tangential distance to line origin
-                    float tanDist = (_yLine - _xLine*cos(_yaw_angle)/sin(_yaw_angle)) / (sin(_yaw_angle) + cos(_yaw_angle)*cos(_yaw_angle)/sin(_yaw_angle));
+
+                    //float h = sqrt((_xLine-xc)*(_xLine-xc) + (_yLine-yc)*(_yLine-yc));
 
                     // Compute perpendicular distance to line
-                    float distLine = (_xLine + tanDist * cos(_yaw_angle)) / sin(_yaw_angle);
+                    //float mp = -tan(_thetaLine);
+
+                    //float mc = (_yLine-yc)/(_xLine-xc);
+
+                    //float psi = atan2(-(mc-mp), (1+mp*mc));
+
+                    float dperp = sin(_thetaLine)*(_yLine-yc) + cos(_thetaLine)*(_xLine-xc);
+//                    if (abs(_xLine-xc) <= 0.01) {
+//                            dperp = _yLine-yc;
+//                    }
+//                    else{
+//                        dperp = sin(psi)*h;
+//                    }
 
                     // Define line distance gains
-                    float kp = 10;
+                    float dp = 5;
+                    float kp = _vDes/dp;
 
                     // Command forward speed
-                    float vx = _vDes;
 
                     // Command lateral speed to approach line
-                    float vy = sqrt(kp*kp*distLine*distLine - _vDes*_vDes);
+                    //float vy = sqrt(kp*kp*dperp*dperp - _vDes*_vDes);
+                    float up = kp*dperp; // line y
+                    float vp = _vDes; // line x
 
                     // Map to global:
-                    vel.x = vx*cos(yaw)
+                    vel.x = up*cos(_thetaLine) + vp*sin(_thetaLine);
+                    vel.y = up*sin(_thetaLine) - vp*cos(_thetaLine);
 
                     // TODO: populate the control elements desired
                     //
                     // in this case, just asking the pixhawk to takeoff to the _target_alt
                     // height
-                    cmd.yaw = _yaw_angle;
+                    cmd.yaw = _thetaLine;
                     pos.z = _target_alt;
 
                     // publish the command
@@ -370,17 +431,18 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
 	// TODO: determine settings
-        float yaw_angle_desired = 76.0*M_PI/180.0;
-        float alt_desired = 1.0;
+
+        float alt_desired = 5.0;
         // Line to follow:
-        float x0 = 10.0;
+        float thetaLine_desired = 30.0*M_PI/180.0;
+        float x0 = 50.0;
         float y0 = -10.0;
 
         // Desired forward speed
         float vDes = 1.0f;
 
 	// create the node
-        ControlNode node(alt_desired,yaw_angle_desired, x0, y0, vDes);
+        ControlNode node(alt_desired,thetaLine_desired, x0, y0, vDes);
 
 	// run the node
 	return node.run();
