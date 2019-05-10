@@ -45,6 +45,8 @@ source devel/setup.bash
 roslaunch aa241x_commander controller_only.launch
 ```
 
+Remember to `catkin_make`!
+
 **Note:** for more details on the connection to the gazebo simulation using mavros, see the `aa241x_mission` [documentation](https://github.com/aa241x/aa241x_mission).
 
 #### Additional Launch File ####
