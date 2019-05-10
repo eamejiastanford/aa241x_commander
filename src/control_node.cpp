@@ -14,6 +14,11 @@
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
 
+// Define states
+const int TAKEOFF = 0;
+const int LINE = 1;
+
+
 /**
  * class to contain the functionality of the controller node.
  */
@@ -25,7 +30,7 @@ public:
 	 * example constructor.
 	 * @param flight_alt the desired altitude for the takeoff point.
 	 */
-	ControlNode(float flight_alt);
+        ControlNode(float flight_alt, float yaw_angle, float xLine, float yLine, float vDes);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -42,6 +47,12 @@ private:
 
 	// TODO: add any settings, etc, here
 	float _flight_alt = 20.0f;		// desired flight altitude [m] AGL (above takeoff)
+        float _yaw_angle = 0.0f;
+        float _xLine = 0.0f;
+        float _yLine = 0.0f;
+        float _vDes = 0.0f;
+        int _STATE;
+
 
 	// data
 	mavros_msgs::State _current_state;
@@ -110,8 +121,8 @@ private:
 };
 
 
-ControlNode::ControlNode(float flight_alt) :
-_flight_alt(flight_alt)
+ControlNode::ControlNode(float flight_alt, float yaw_angle, float xLine, float yLine, float vDes) :
+_flight_alt(flight_alt), _yaw_angle(yaw_angle), _xLine(xLine), _yLine(yLine), _vDes(vDes)
 {
 
 
@@ -138,6 +149,8 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 	// TODO: account for offset to convert from PX4 coordinate to lake lag frame
 	_current_local_pos = *msg;
 
+
+
 	// TODO: make sure to account for the offset if desiring to fly in the Lake Lag frame
 
 	// check to see if have completed the waypoint
@@ -148,7 +161,8 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 		// check condition on being "close enough" to the waypoint
 		if (abs(current_alt - _target_alt) < 0.1) {
 			// update the target altitude to land, and increment the waypoint
-			_target_alt = 0;
+                        //_target_alt = 0;
+                        _STATE = LINE;
 			_wp_index++;
 		}
 	}
@@ -181,6 +195,8 @@ void ControlNode::waitForFCUConnection() {
 
 int ControlNode::run() {
 
+        _STATE = TAKEOFF;
+
 	// wait for the controller connection
 	waitForFCUConnection();
 	ROS_INFO("connected to the FCU");
@@ -193,19 +209,10 @@ int ControlNode::run() {
 	// configure the type mask to command only position information
 	// NOTE: type mask sets the fields to IGNORE
 	// TODO: need to add a link to the mask to explain the value
-	cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_VX |
-		mavros_msgs::PositionTarget::IGNORE_VY |
-		mavros_msgs::PositionTarget::IGNORE_VZ |
-		mavros_msgs::PositionTarget::IGNORE_AFX |
-		mavros_msgs::PositionTarget::IGNORE_AFY |
-		mavros_msgs::PositionTarget::IGNORE_AFZ |
-		mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
-
-	// cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
 
 	// the yaw information
 	// NOTE: just keeping the heading north
-	cmd.yaw = 0;
+        cmd.yaw = 0;
 
 	// the position information for the command
 	// NOTE: this is defined in ENU
@@ -268,18 +275,80 @@ int ControlNode::run() {
 			_target_alt = _flight_alt;
 		}
 
-		// TODO: populate the control elements desired
-		//
-		// in this case, just asking the pixhawk to takeoff to the _target_alt
-		// height
-		pos.x = 0;
-		pos.y = 0;
-		pos.z = _target_alt;
+                if (_STATE == TAKEOFF) {
 
-		// publish the command
-		cmd.header.stamp = ros::Time::now();
-		cmd.position = pos;
-		cmd.velocity = vel;
+                    cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_VX |
+                            mavros_msgs::PositionTarget::IGNORE_VY |
+                            mavros_msgs::PositionTarget::IGNORE_VZ |
+                            mavros_msgs::PositionTarget::IGNORE_AFX |
+                            mavros_msgs::PositionTarget::IGNORE_AFY |
+                            mavros_msgs::PositionTarget::IGNORE_AFZ |
+                            mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
+
+                    // TODO: populate the control elements desired
+                    //
+                    // in this case, just asking the pixhawk to takeoff to the _target_alt
+                    // height
+                    pos.x = 0.0;
+                    pos.y = 0.0;
+                    pos.z = _target_alt;
+
+                    // publish the command
+                    cmd.header.stamp = ros::Time::now();
+                    cmd.position = pos;
+                    cmd.velocity = vel;
+
+                }
+                else if(_STATE == LINE) {
+
+                    // Get state for control
+                    float xc = _current_local_pos.pose.position.x;
+                    float yc = _current_local_pos.pose.position.y;
+                    float yaw = _current_local_pos.pose.orientation.yaw;
+
+                    cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
+
+//                    cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
+//                            mavros_msgs::PositionTarget::IGNORE_PY |
+//                            mavros_msgs::PositionTarget::IGNORE_VZ |
+//                            mavros_msgs::PositionTarget::IGNORE_AFX |
+//                            mavros_msgs::PositionTarget::IGNORE_AFY |
+//                            mavros_msgs::PositionTarget::IGNORE_AFZ |
+//                            mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
+
+                    // Compute tangential distance to line origin
+                    float tanDist = (_yLine - _xLine*cos(_yaw_angle)/sin(_yaw_angle)) / (sin(_yaw_angle) + cos(_yaw_angle)*cos(_yaw_angle)/sin(_yaw_angle));
+
+                    // Compute perpendicular distance to line
+                    float distLine = (_xLine + tanDist * cos(_yaw_angle)) / sin(_yaw_angle);
+
+                    // Define line distance gains
+                    float kp = 10;
+
+                    // Command forward speed
+                    float vx = _vDes;
+
+                    // Command lateral speed to approach line
+                    float vy = sqrt(kp*kp*distLine*distLine - _vDes*_vDes);
+
+                    // Map to global:
+                    vel.x = vx*cos(yaw)
+
+                    // TODO: populate the control elements desired
+                    //
+                    // in this case, just asking the pixhawk to takeoff to the _target_alt
+                    // height
+                    cmd.yaw = _yaw_angle;
+                    pos.z = _target_alt;
+
+                    // publish the command
+                    cmd.header.stamp = ros::Time::now();
+                    cmd.position = pos;
+                    cmd.velocity = vel;
+
+                }
+
+
 		_cmd_pub.publish(cmd);
 
 		// remember need to always call spin once for the callbacks to trigger
@@ -301,9 +370,17 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
 	// TODO: determine settings
+        float yaw_angle_desired = 76.0*M_PI/180.0;
+        float alt_desired = 1.0;
+        // Line to follow:
+        float x0 = 10.0;
+        float y0 = -10.0;
+
+        // Desired forward speed
+        float vDes = 1.0f;
 
 	// create the node
-	ControlNode node(20.0f);
+        ControlNode node(alt_desired,yaw_angle_desired, x0, y0, vDes);
 
 	// run the node
 	return node.run();
