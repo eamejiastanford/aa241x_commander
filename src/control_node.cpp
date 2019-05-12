@@ -68,6 +68,10 @@ private:
 	float _n_offset = 0.0f;
 	float _u_offset = 0.0f;
 
+        // actuator saturation
+        float _vxMax = 1.0f;
+        float _vyMax = 1.0f;
+
 	// subscribers
 	ros::Subscriber _state_sub;			// the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
@@ -220,6 +224,17 @@ static void toEulerAngle(const float q[4], float& roll, float& pitch, float& yaw
 
 }
 
+// Gets the sign of a float (can't believe c++ doesn't have this...)
+int sign(float x) {
+
+    if (x >= 0) {
+        return 1;
+    }
+    else {
+        return -1;
+    }
+}
+
 
 int ControlNode::run() {
 
@@ -361,44 +376,30 @@ int ControlNode::run() {
 //                            mavros_msgs::PositionTarget::IGNORE_AFZ |
 //                            mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
 
-                    // Compute tangential distance to line origin
-
-                    //float h = sqrt((_xLine-xc)*(_xLine-xc) + (_yLine-yc)*(_yLine-yc));
-
-                    // Compute perpendicular distance to line
-                    //float mp = -tan(_thetaLine);
-
-                    //float mc = (_yLine-yc)/(_xLine-xc);
-
-                    //float psi = atan2(-(mc-mp), (1+mp*mc));
-
+                    // Compute tangential distance to line
                     float dperp = sin(_thetaLine)*(_yLine-yc) + cos(_thetaLine)*(_xLine-xc);
-//                    if (abs(_xLine-xc) <= 0.01) {
-//                            dperp = _yLine-yc;
-//                    }
-//                    else{
-//                        dperp = sin(psi)*h;
-//                    }
 
                     // Define line distance gains
                     float dp = 5;
                     float kp = _vDes/dp;
 
-                    // Command forward speed
-
-                    // Command lateral speed to approach line
-                    //float vy = sqrt(kp*kp*dperp*dperp - _vDes*_vDes);
+                    // Command speed towards line and along line
                     float up = kp*dperp; // line y
                     float vp = _vDes; // line x
 
-                    // Map to global:
-                    vel.x = up*cos(_thetaLine) + vp*sin(_thetaLine);
-                    vel.y = up*sin(_thetaLine) - vp*cos(_thetaLine);
+                    // Map to global with velocity saturation:
+                    float vx = up*cos(_thetaLine) + vp*sin(_thetaLine);
+                    float vy = up*sin(_thetaLine) - vp*cos(_thetaLine);
+                    vel.x = vx;
+                    vel.y = vy;
+                    if (abs(vx) > _vxMax) {
+                        vel.x = sign(vx) * _vxMax; // saturate vx
+                    }
+                    if (abs(vy) > _vyMax) {
+                        vel.y = sign(vy) * _vyMax; // saturate vy
+                    }
 
-                    // TODO: populate the control elements desired
-                    //
-                    // in this case, just asking the pixhawk to takeoff to the _target_alt
-                    // height
+                    // Set the yaw angle and the position
                     cmd.yaw = _thetaLine;
                     pos.z = _target_alt;
 
@@ -432,10 +433,10 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
 	// TODO: determine settings
 
-        float alt_desired = 5.0;
+        float alt_desired = 20.0;
         // Line to follow:
-        float thetaLine_desired = 30.0*M_PI/180.0;
-        float x0 = 50.0;
+        float thetaLine_desired = 270.0*M_PI/180.0; // Measured CCW from SOUTH, defines forward
+        float x0 = -50.0;
         float y0 = -10.0;
 
         // Desired forward speed
