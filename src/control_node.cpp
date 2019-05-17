@@ -80,9 +80,9 @@ private:
         float _u_offset = 0.0f;
 
         // actuator saturation
-        float _vxMax = 2.0f;
-        float _vyMax = 2.0f;
-        float _vzMax = 2.0f;
+        float _vxMax = 5.0f;
+        float _vyMax = 5.0f;
+        float _vzMax = 5.0f;
 
         // subscribers
         ros::Subscriber _state_sub;			// the current state of the pixhawk
@@ -262,6 +262,7 @@ int ControlNode::run() {
         _STATE = TAKEOFF;
         int angle = 50;
         int count = 0;
+        int cycle = 0;
 
         // wait for the controller connection
         waitForFCUConnection();
@@ -327,6 +328,7 @@ int ControlNode::run() {
                 //Pt Trajectory:
                 float xPosVector[5];
                 float yPosVector[5];
+                float radius = 150; //160
 
                 //Commanded velocities
                 float vx;
@@ -424,9 +426,9 @@ int ControlNode::run() {
                     cmd.yaw = yaw;
 
                     if (abs(zc - _flight_alt) < 0.1) {
-                        _STATE = LINE;
+                        //_STATE = LINE;
                         //_STATE = Pt_Trajectory;
-                        //_STATE = Perimeter_Search;
+                        _STATE = Perimeter_Search;
                     }
 
                 }
@@ -442,11 +444,13 @@ int ControlNode::run() {
                     float center_x = -160;
                     float center_y = -70;
 
-                    float radius = 150; //160
+
+                    float diameter_search = (5/7)*zc+28.57; // Diameter of ground below drone which is realized
+                    float radius_search = diameter_search/2;
 
                     // Perform sweep of circle outer perimeter:
-                    float xL = radius*cos(angle*M_PI/180.0)+center_x;
-                    float yL = radius*sin(angle*M_PI/180.0)+center_y;
+                    float xL = (radius-radius_search)*cos(angle*M_PI/180.0)+center_x;
+                    float yL = (radius-radius_search)*sin(angle*M_PI/180.0)+center_y;
 
                     // Distance between point and current location
                     float xpt = xL-xc;
@@ -484,7 +488,12 @@ int ControlNode::run() {
                     // If it reaches the objective point, switch points to acquire next trajectory
                     if (pt_dist <= 2.0){
                         angle = angle+10;
-                        if (angle == 360){
+                    }
+                    if (angle == 360){
+                        angle = 0;
+                        radius = radius-diameter_search;
+                        cycle = cycle + 1;
+                        if (cycle == 2){ // completed two rotations
                             _STATE = GOHOME;
                         }
                     }
@@ -507,16 +516,16 @@ int ControlNode::run() {
                     float radius = 150; //160
                     // x Bounds: -10,-310; y Bounds: +80, -220
 
-                    xPosVector[0] = -30;
-                    xPosVector[1] = -150;
+                    float diameter_search = (5/7)*zc+28.57; // Diameter of ground below drone which is realized
+                    float radius_search = diameter_search/2;
+
+                    // Perform sweep of circle outer perimeter:
+                    // Initial sweep of outer circle to include bounds
+                    xPosVector[0] = (radius-radius_search)*cos(angle*M_PI/180.0)+center_x;
+                    yPosVector[0] = (radius-radius_search)*sin(angle*M_PI/180.0)+center_y;
+                    //When angle gets to 360 degrees, switch to inner circle:
                     xPosVector[2] = -250;
-                    xPosVector[3] = -200;
-                    xPosVector[4] = -60;
-                    yPosVector[0] = 10;
-                    yPosVector[1] = 100;
                     yPosVector[2] = -60;
-                    yPosVector[3] = -100;
-                    yPosVector[4] = -80;
 
                     int size = 5; //length of x or y vector; make this generalized later
 
