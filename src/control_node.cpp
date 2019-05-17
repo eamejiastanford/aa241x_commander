@@ -5,6 +5,7 @@
 // includes
 #include <math.h>
 #include <ros/ros.h>
+#include <string>
 
 // topic data
 #include <geometry_msgs/PoseStamped.h>
@@ -14,15 +15,18 @@
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
 
+#include <std_msgs/String.h>
+#include <std_msgs/Float64.h>
+
 // Define states
-const int TAKEOFF = 0;
-const int LINE = 1;
-const int LINE2 = 2;
-const int LINE3 = 3;
-const int GOHOME = 4;
-const int LAND = 5;
-const int Pt_Trajectory = 6;
-const int Perimeter_Search = 7;
+const std::string TAKEOFF = "TAKEOFF";
+const std::string LINE = "LINE";
+const std::string LINE2 = "LINE2";
+const std::string LINE3 = "LINE3";
+const std::string GOHOME = "GOHOME";
+const std::string LAND = "LAND";
+const std::string Pt_Trajectory = "Pt_Trajectory";
+const std::string Perimeter_Search = "Perimeter_Search";
 /**
  * class to contain the functionality of the controller node.
  */
@@ -55,12 +59,15 @@ private:
         float _xLine = 0.0f;
         float _yLine = 0.0f;
         float _vDes = 0.0f;
-        int _STATE;
+        std::string _STATE;
 
 
         // data
         mavros_msgs::State _current_state;
         geometry_msgs::PoseStamped _current_local_pos;
+        std_msgs::String _droneState_msg;
+        std_msgs::Float64 _dPerp_msg;
+        std_msgs::Float64 _dAlongLine_msg;
 
         // waypoint handling (example)
         int _wp_index = -1;
@@ -86,7 +93,9 @@ private:
 
         // publishers
         ros::Publisher _cmd_pub;
-        // TODO: recommend adding publishers for data you might want to log
+        ros::Publisher _droneState_pub;
+        ros::Publisher _dPerp_pub;
+        ros::Publisher _dAlongLine_pub;
 
         // callbacks
 
@@ -145,6 +154,13 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         // publish a PositionTarget to the `/mavros/setpoint_raw/local` topic which
         // mavros subscribes to in order to send commands to the pixhawk
         _cmd_pub = _nh.advertise<mavros_msgs::PositionTarget>("mavros/setpoint_raw/local", 1);
+
+        // Publisher for the drone state (TODO: MOVE TO STATE MACHINE NODE)
+        _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
+
+        // Publish data used in control
+        _dPerp_pub = _nh.advertise<std_msgs::Float64>("dPerp", 10);
+        _dAlongLine_pub = _nh.advertise<std_msgs::Float64>("dAlongLine", 10);
 
 }
 
@@ -408,8 +424,8 @@ int ControlNode::run() {
                     cmd.yaw = yaw;
 
                     if (abs(zc - _flight_alt) < 0.1) {
-                        //_STATE = LINE;
-                        _STATE = Pt_Trajectory;
+                        _STATE = LINE;
+                        //_STATE = Pt_Trajectory;
                         //_STATE = Perimeter_Search;
                     }
 
@@ -584,13 +600,20 @@ int ControlNode::run() {
                     cmd.yaw = atan2(vel.y,vel.x);
                     pos.z = _flight_alt;
 
-                    // publish the command
+                    // Assign the command to the command message
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
 
+                    // Assign and publish the control data
+                    _dPerp_msg.data = dperp;
+                    _dAlongLine_msg.data = dAlongLine;
+                    _dPerp_pub.publish(_dPerp_msg);
+                    _dAlongLine_pub.publish(_dAlongLine_msg);
+
                     if (abs(dAlongLine) >= 260.0){
-                        _STATE = LINE2;
+                        //_STATE = LINE2;
+                        _STATE = GOHOME;
                         x1 = xc;
                         y1 = yc;
                         _xLine = xc;
@@ -765,7 +788,11 @@ int ControlNode::run() {
 
                     }
 
+                // Update state message
+                _droneState_msg.data = _STATE;
+
                 _cmd_pub.publish(cmd);
+                _droneState_pub.publish(_droneState_msg);
 
                 // remember need to always call spin once for the callbacks to trigger
                 ros::spinOnce();
