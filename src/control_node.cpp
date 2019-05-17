@@ -493,7 +493,7 @@ int ControlNode::run() {
                         angle = 0;
                         radius = radius-diameter_search;
                         cycle = cycle + 1;
-                        if (cycle == static_cast<int>(radius/radius_search)){ // completed two rotations
+                        if (cycle == 5){//static_cast<int>(radius/radius_search)){ // completed two rotations
                             _STATE = GOHOME;
                         }
                     }
