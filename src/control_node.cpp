@@ -263,6 +263,7 @@ int ControlNode::run() {
         int angle = 50;
         int count = 0;
         int cycle = 0;
+        float radius = 150; //160
 
         // wait for the controller connection
         waitForFCUConnection();
@@ -328,7 +329,6 @@ int ControlNode::run() {
                 //Pt Trajectory:
                 float xPosVector[5];
                 float yPosVector[5];
-                float radius = 150; //160
 
                 //Commanded velocities
                 float vx;
@@ -493,7 +493,7 @@ int ControlNode::run() {
                         angle = 0;
                         radius = radius-diameter_search;
                         cycle = cycle + 1;
-                        if (cycle == 2){ // completed two rotations
+                        if (cycle == static_cast<int>(radius/radius_search)){ // completed two rotations
                             _STATE = GOHOME;
                         }
                     }
