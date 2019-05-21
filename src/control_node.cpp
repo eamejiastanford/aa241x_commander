@@ -432,10 +432,10 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
 	// TODO: determine settings
 
-        float alt_desired = 5.0;
+        float alt_desired = 20.0;
         // Line to follow:
         float thetaLine_desired = 30.0*M_PI/180.0;
-        float x0 = 50.0;
+        float x0 = -50.0;
         float y0 = -10.0;
 
         // Desired forward speed
