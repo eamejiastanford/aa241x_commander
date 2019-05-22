@@ -86,8 +86,8 @@ private:
         float _current_lon = 0.0f;
 
         // actuator saturation
-        float _vxMax = 5.0f;
-        float _vyMax = 5.0f;
+        float _vxMax = 2.0f;
+        float _vyMax = 2.0f;
         float _vzMax = 1.0f;
         float _vzTakeoff = 5.0f;
 
@@ -475,11 +475,11 @@ int ControlNode::run() {
                     cmd.yaw = yaw;
 
                     if (abs(zc - _flight_alt) < 0.1) {
-                        //_STATE = LINE;
+                        _STATE = LINE;
                         //_STATE = Pt_Trajectory;
                         //_STATE = Perimeter_Search;
                         //_STATE = LAND;
-                        _STATE = DROP_ALT;
+                        //_STATE = DROP_ALT;
                     }
 
                 }
@@ -724,7 +724,7 @@ int ControlNode::run() {
                     _dPerp_pub.publish(_dPerp_msg);
                     _dAlongLine_pub.publish(_dAlongLine_msg);
 
-                    if (abs(dAlongLine) >= 260.0){
+                    if (abs(dAlongLine) >= 150.0){
                         //_STATE = LINE2;
                         _STATE = GOHOME;
                         x1 = xc;
@@ -772,7 +772,7 @@ int ControlNode::run() {
                     cmd.yaw = atan2(vel.y,vel.x);
 
                     if (abs(xc-x0)<=0.1 && abs(yc-y0)<=0.1){
-                        _STATE = LAND;
+                        //_STATE = LAND;
                     }
 
 
@@ -878,7 +878,7 @@ int main(int argc, char **argv) {
         ros::NodeHandle private_nh("~");
         // TODO: determine settings
 
-        float alt_desired = 30.0;
+        float alt_desired = 15.0;
         // Line to follow:
         float thetaLine_desired = 245.0*M_PI/180.0; // Measured CCW from SOUTH, defines forward
         float xLine= -10.0;
