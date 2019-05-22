@@ -9,6 +9,7 @@
 
 // topic data
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/PositionTarget.h>
 
@@ -66,9 +67,11 @@ private:
         // data
         mavros_msgs::State _current_state;
         geometry_msgs::PoseStamped _current_local_pos;
+        geometry_msgs::TwistStamped _current_local_twist;
         std_msgs::String _droneState_msg;
         std_msgs::Float64 _dPerp_msg;
         std_msgs::Float64 _dAlongLine_msg;
+        std_msgs::Float64 _currentYaw_msg;
 
         // waypoint handling (example)
         int _wp_index = -1;
@@ -86,10 +89,12 @@ private:
         float _vxMax = 5.0f;
         float _vyMax = 5.0f;
         float _vzMax = 1.0f;
+        float _vzTakeoff = 5.0f;
 
         // subscribers
         ros::Subscriber _state_sub;			// the current state of the pixhawk
         ros::Subscriber _local_pos_sub;		// local position information
+        ros::Subscriber _local_twist_sub;		// local twist information
         ros::Subscriber _sensor_meas_sub;	// mission sensor measurement
         ros::Subscriber _mission_state_sub; // mission state
         // TODO: add subscribers here
@@ -99,6 +104,7 @@ private:
         ros::Publisher _droneState_pub;
         ros::Publisher _dPerp_pub;
         ros::Publisher _dAlongLine_pub;
+        ros::Publisher _currentYaw_pub;
 
         // callbacks
 
@@ -113,6 +119,7 @@ private:
          * @param msg pose stamped message type
          */
         void localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+        void localTwistCallback(const geometry_msgs::TwistStamped::ConstPtr& msg);
 
         /**
          * callback for the sensor measurement for the AA241x mission
@@ -150,6 +157,7 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         // subscribe to the desired topics
         _state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &ControlNode::stateCallback, this);
         _local_pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 1, &ControlNode::localPosCallback, this);
+        _local_twist_sub = _nh.subscribe<geometry_msgs::TwistStamped>("/mavros/local_position/velocity_local", 1, &ControlNode::localTwistCallback, this);
         _sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &ControlNode::sensorMeasCallback, this);
 
         // advertise the published detailed
@@ -164,6 +172,7 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         // Publish data used in control
         _dPerp_pub = _nh.advertise<std_msgs::Float64>("dPerp", 10);
         _dAlongLine_pub = _nh.advertise<std_msgs::Float64>("dAlongLine", 10);
+        _currentYaw_pub = _nh.advertise<std_msgs::Float64>("currentYaw", 10);
 
 }
 
@@ -176,6 +185,7 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // save the current local position locally to be used in the main loop
         // TODO: account for offset to convert from PX4 coordinate to lake lag frame
         _current_local_pos = *msg;
+
 
 
 
@@ -194,6 +204,13 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
                         _wp_index++;
                 }
         }
+}
+
+void ControlNode::localTwistCallback(const geometry_msgs::TwistStamped::ConstPtr& msg) {
+        // save the current local position locally to be used in the main loop
+        // TODO: account for offset to convert from PX4 coordinate to lake lag frame
+        _current_local_twist = *msg;
+
 }
 
 void ControlNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
@@ -229,22 +246,25 @@ static void toEulerAngle(const float q[4], float& roll, float& pitch, float& yaw
     float qy = q[2];
     float qz = q[3];
 
-    // Yaw:
-    double sinr_cosp = +2.0 * (qw*qw + qy*qz);
-    double cosr_cosp = +1.0 - 2.0*(qx*qx + qy*qy);
-    yaw = atan2(sinr_cosp, cosr_cosp);
+    // Roll:
+    double sinr_cosp = +2.0 * (qw * qx + qy * qz);
+    double cosr_cosp = +1.0 - 2.0 * (qx * qx + qy * qy);
+    roll = atan2(sinr_cosp, cosr_cosp);
 
     // Pitch:
-    double sinp = +2.0 * (qw*qy - qz*qx);
-    if (fabs(sinp) >=1)
-        pitch = copysign(M_PI / 2, sinp); //use 90 degrees if out of range
-    else
+    double sinp = +2.0 * (qw * qy - qz * qx);
+    if (fabs(sinp) >= 1) {
+        pitch = copysign(M_PI / 2, sinp); // Use 90 degrees if out of range
+    }
+    else {
         pitch = asin(sinp);
+    }
 
-    //Roll:
-    double siny_cosp = +2.0 * (qw*qz + qx*qy);
-    double cosy_cosp = +1.0 - 2.0*(qy*qy + qz*qz);
-    roll = atan2(siny_cosp,cosy_cosp);
+    // Yaw:
+    double siny_cosp = +2.0 * (qw * qz + qx * qy);
+    double cosy_cosp = +1.0 - 2.0 * (qy * qy + qz * qz);
+    yaw = atan2(siny_cosp, cosy_cosp);
+
 
 }
 
@@ -312,6 +332,8 @@ int ControlNode::run() {
                 float xc = _current_local_pos.pose.position.x;
                 float yc = _current_local_pos.pose.position.y;
                 float zc = _current_local_pos.pose.position.z;
+                float vxc = _current_local_twist.twist.linear.x;
+                float vyc = _current_local_twist.twist.linear.y;
                 float qx = _current_local_pos.pose.orientation.x;
                 float qy = _current_local_pos.pose.orientation.y;
                 float qz = _current_local_pos.pose.orientation.z;
@@ -407,21 +429,44 @@ int ControlNode::run() {
 
                     float kpz = 1.0;
 
-                    // Commnad velocities to control position
-                    vel.x = 0.0; // Don't translate laterally
-                    vel.y = 0.0; // Don't translate laterally
-                    vel.z = -kpz * (zc - _flight_alt);
+                    if (zc<=2.5){
+                        // Commnad velocities to control position
+                        vel.x = 0.0; // Don't translate laterally
+                        vel.y = 0.0; // Don't translate laterally
+                        vel.z = -kpz * (zc - _flight_alt);
 
-                    // Saturate velocities
-                    if (abs(vel.x) > _vxMax) {
-                        vel.x = sign(vel.x) * _vxMax; // saturate vx
+                        // Saturate velocities
+                        if (abs(vel.x) > _vxMax) {
+                            vel.x = sign(vel.x) * _vxMax; // saturate vx
+                        }
+                        if (abs(vel.y) > _vyMax) {
+                            vel.y = sign(vel.y) * _vyMax; // saturate vy
+                        }
+                        if (abs(vel.z) > _vzTakeoff) {
+                            vel.z = sign(vel.z) * _vzTakeoff; // saturate vz
+                        }
+
+
                     }
-                    if (abs(vel.y) > _vyMax) {
-                        vel.y = sign(vel.y) * _vyMax; // saturate vy
+                    else{
+                        // Commnad velocities to control position
+                        vel.x = 0.0; // Don't translate laterally
+                        vel.y = 0.0; // Don't translate laterally
+                        vel.z = -kpz * (zc - _flight_alt);
+
+                        // Saturate velocities
+                        if (abs(vel.x) > _vxMax) {
+                            vel.x = sign(vel.x) * _vxMax; // saturate vx
+                        }
+                        if (abs(vel.y) > _vyMax) {
+                            vel.y = sign(vel.y) * _vyMax; // saturate vy
+                        }
+                        if (abs(vel.z) > _vzMax) {
+                            vel.z = sign(vel.z) * _vzMax; // saturate vz
+                        }
+
                     }
-                    if (abs(vel.z) > _vzMax) {
-                        vel.z = sign(vel.z) * _vzMax; // saturate vz
-                    }
+
 
                     // publish the command
                     cmd.header.stamp = ros::Time::now();
@@ -438,6 +483,7 @@ int ControlNode::run() {
                     }
 
                 }
+
                 else if (_STATE == Perimeter_Search){
                     cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
                                      mavros_msgs::PositionTarget::IGNORE_PY |
@@ -445,7 +491,7 @@ int ControlNode::run() {
                                      mavros_msgs::PositionTarget::IGNORE_AFX |
                                      mavros_msgs::PositionTarget::IGNORE_AFY |
                                      mavros_msgs::PositionTarget::IGNORE_AFZ |
-                                     mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
+                                     mavros_msgs::PositionTarget::IGNORE_YAW);
                     // Generalize this later to be based off longitude and lattitude, not distance from current position
 
                     double lake_ctr_lat = 37.4224444;		// [deg]
@@ -471,13 +517,35 @@ int ControlNode::run() {
                     float kpx = 0.8;
                     float kpy = 0.8;
                     float kpz = 1.0;
+                    float k_yaw = 0.5;
 
                     // Proportional position control
                     vel.x = -kpx * (xc - xL);
                     vel.y = -kpy * (yc - yL);
                     vel.z = -kpz * (zc - _flight_alt);
 
+
                     // Saturation of velocities
+
+
+//                    float V_max_pt2pt = sqrt(pow(_vxMax,2.0)+pow(_vyMax,2.0));
+
+//                    if (abs(xpt)>abs(ypt)){
+//                        // Larger distance in x-direction to close; set vx to its max then determine vy to keep constant Vmaxpt2pt
+//                        if (abs(vel.x) > _vxMax) {
+//                            vel.x = sign(vel.x) * _vxMax; // saturate vx
+//                        }
+//                        vel.y = sign(vel.y) * (sqrt(pow(V_max_pt2pt,2.0) - pow(vel.x,2.0)));
+//                    }
+//                    else {
+//                        if (abs(vel.y) > _vyMax) {
+//                            vel.y = sign(vel.y) * _vyMax; // saturate vx
+//                        }
+//                        vel.x = sign(vel.x) * (sqrt(pow(V_max_pt2pt,2.0) - pow(vel.y,2.0)));
+//                    }
+
+
+
                     if (abs(vel.x) > _vxMax) {
                         vel.x = sign(vel.x) * _vxMax; // saturate vx
                     }
@@ -486,18 +554,44 @@ int ControlNode::run() {
                     }
 
                     // Set the yaw angle and the position
-                    cmd.yaw = atan2(vel.y,vel.x);
+                    //cmd.yaw = atan2(vel.y,vel.x);
                     pos.z = _flight_alt;
+
+                    // Set desired yaw angle based on velocity in x-y N-E plane
+                    float yawDes = atan2(vyc, vxc);
+                    float mappedYaw;
+                    if (yawDes >= 0) {
+                        yawDes = atan2(vyc, vxc);
+                    }
+                    else {
+                        yawDes = 2 * M_PI + atan2(vyc, vxc); // map atan2 to 0 -> 360 degree angle
+                    }
+                    if (yaw >= 0) { // yaw measurement is positive already
+                        mappedYaw = yaw;
+                    }
+                    else { // yaw measurement is negative
+                        mappedYaw = 2 * M_PI + yaw;
+                    }
+                    //cmd.yaw_rate = -k_yaw * (mappedYaw - yawDes);
+
+                    if (abs(mappedYaw-yawDes) <= M_PI){
+                        cmd.yaw_rate = -k_yaw * (mappedYaw-yawDes);
+                    }
+                    else {
+                        cmd.yaw_rate = k_yaw * (2*M_PI - (mappedYaw-yawDes));
+                    }
+
+
 
                     // publish the command
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
-                    cmd.yaw = atan2(vel.y,vel.x);
+                    //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
 
                     // If it reaches the objective point, switch points to acquire next point trajectory
-                    if (pt_dist <= 5.0){
-                        angle = angle+1;
+                    if (pt_dist <= 15.0){
+                        angle = angle+5;
                     }
                     if (angle == 360){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
                         angle = 0;
@@ -754,6 +848,9 @@ int ControlNode::run() {
 
                     }
 
+                // Update and publish yaw message
+                _currentYaw_msg.data = yaw * 180.0 / M_PI;
+                _currentYaw_pub.publish(_currentYaw_msg);
 
                 // Update state message
                 _droneState_msg.data = _STATE;
