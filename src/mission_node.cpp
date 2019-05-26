@@ -198,14 +198,17 @@ void MissionNode::waitForFCUConnection() {
 
 
 int MissionNode::run() {
+
+        waitForFCUConnection();
+        ROS_INFO("connected to the FCU");
+
 	// set the loop rate in [Hz]
 	ros::Rate rate(10.0);
 
 	// main loop
 	while (ros::ok()) {
             // TODO: make high level decisions here
-            waitForFCUConnection();
-            ROS_INFO("connected to the FCU");
+
 
             // TODO: we recommend you publish high level commands (e.g. position or
             // general direction) here that your control node will use to actually
