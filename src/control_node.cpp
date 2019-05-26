@@ -6,6 +6,7 @@
 #include <math.h>
 #include <ros/ros.h>
 #include <string>
+#include <iostream>
 
 // topic data
 #include <geometry_msgs/PoseStamped.h>
@@ -17,6 +18,7 @@
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
+#include <vector>
 
 // Define states
 const std::string TAKEOFF = "TAKEOFF";
@@ -27,6 +29,7 @@ const std::string GOHOME = "GOHOME";
 const std::string LAND = "LAND";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
+
 /**
  * class to contain the functionality of the controller node.
  */
@@ -59,15 +62,24 @@ private:
         float _xLine = 0.0f;
         float _yLine = 0.0f;
         float _vDes = 0.0f;
-        std::string _STATE;
 
 
         // data
         mavros_msgs::State _current_state;
         geometry_msgs::PoseStamped _current_local_pos;
+        aa241x_mission::SensorMeasurement _current_sensor_meas;
+        std::string _STATE;
+
+
+
         std_msgs::String _droneState_msg;
         std_msgs::Float64 _dPerp_msg;
         std_msgs::Float64 _dAlongLine_msg;
+
+        // Beacon search initializations
+        std::vector<int> _id;
+        std::vector<float> _n;
+        std::vector<float> _e;
 
         // waypoint handling (example)
         int _wp_index = -1;
@@ -85,15 +97,17 @@ private:
         float _vzMax = 5.0f;
 
         // subscribers
-        ros::Subscriber _state_sub;			// the current state of the pixhawk
-        ros::Subscriber _local_pos_sub;		// local position information
-        ros::Subscriber _sensor_meas_sub;	// mission sensor measurement
-        ros::Subscriber _mission_state_sub; // mission state
+        ros::Subscriber _state_sub;                 // the current state of the pixhawk
+        ros::Subscriber _local_pos_sub;             // local position information
+        ros::Subscriber _sensor_meas_sub;           // mission sensor measurement
+        ros::Subscriber _mission_state_sub;         // mission state
+        ros::Subscriber _droneState_sub;            // the current state of the drone
+        ros::Subscriber _beaconState_sub;           // the current state of the beacon information
         // TODO: add subscribers here
 
         // publishers
         ros::Publisher _cmd_pub;
-        ros::Publisher _droneState_pub;
+//ros::Publisher _droneState_pub;
         ros::Publisher _dPerp_pub;
         ros::Publisher _dAlongLine_pub;
 
@@ -126,6 +140,10 @@ private:
          */
         void missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg);
 
+        void beaconStateCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg);
+
+        void droneStateCallback(const std_msgs::String::ConstPtr& msg);
+
         // TODO: add callbacks here
 
         // helper functions
@@ -143,11 +161,12 @@ ControlNode::ControlNode(float flight_alt, float thetaLine, float xLine, float y
 _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
 {
 
-
         // subscribe to the desired topics
         _state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &ControlNode::stateCallback, this);
         _local_pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 1, &ControlNode::localPosCallback, this);
         _sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &ControlNode::sensorMeasCallback, this);
+        _droneState_sub = _nh.subscribe<std_msgs::String>("drone_state", 10, &ControlNode::droneStateCallback, this);
+        _beaconState_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("beacon_state", 10, &ControlNode::beaconStateCallback, this);
 
         // advertise the published detailed
 
@@ -156,7 +175,7 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         _cmd_pub = _nh.advertise<mavros_msgs::PositionTarget>("mavros/setpoint_raw/local", 1);
 
         // Publisher for the drone state (TODO: MOVE TO STATE MACHINE NODE)
-        _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
+        //_droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
 
         // Publish data used in control
         _dPerp_pub = _nh.advertise<std_msgs::Float64>("dPerp", 10);
@@ -181,13 +200,15 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // check to see if have completed the waypoint
         // NOTE: for this case we only have a single waypoint
         if (_wp_index == 0) {
+
                 float current_alt = _current_local_pos.pose.position.z;
 
-                // check condition on being "close enough" to the waypoint
+                // check conditio_sensor_meas_subn on being "close enough" to the waypoint
                 if (abs(current_alt - _flight_alt) < 0.1) {
                         // update the target altitude to land, and increment the waypoint
                         //_target_alt = 0;
                        // _STATE = LINE;
+
                         _wp_index++;
                 }
         }
@@ -198,6 +219,9 @@ void ControlNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::Co
 
         // NOTE: this callback is for an example of how to setup a callback, you may
         // want to move this information to a mission handling node
+        _id = msg->id;
+        _n = msg->n;
+        _e = msg->e;
 }
 
 void ControlNode::missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg) {
@@ -205,6 +229,18 @@ void ControlNode::missionStateCallback(const aa241x_mission::MissionState::Const
         _e_offset = msg->e_offset;
         _n_offset = msg->n_offset;
         _u_offset = msg->u_offset;
+}
+
+void ControlNode::droneStateCallback(const std_msgs::String::ConstPtr& msg) {
+        // save the state locally to be used in the main loop
+        _STATE = msg->data;
+}
+
+void ControlNode::beaconStateCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
+        // save the offset information
+        _id = msg->id;
+        _n = msg->n;
+        _e = msg->e;
 }
 
 
@@ -258,12 +294,12 @@ int sign(float x) {
 
 
 int ControlNode::run() {
-
-        _STATE = TAKEOFF;
+        //_STATE = TAKEOFF;
         int angle = 50;
         int count = 0;
         int cycle = 0;
         float radius = 150; //160
+        _flight_alt = 50.0;
 
         // wait for the controller connection
         waitForFCUConnection();
@@ -303,7 +339,6 @@ int ControlNode::run() {
 
         // main loop
         while (ros::ok()) {
-
                 // Get state for control
                 float xc = _current_local_pos.pose.position.x;
                 float yc = _current_local_pos.pose.position.y;
@@ -349,7 +384,7 @@ int ControlNode::run() {
                 //
                 // NOTE: need to be streaming setpoints in order for offboard to be
                 // allowed, hence the publishing of an empty command
-                if (_current_state.mode != "OFFBOARD") {
+                if (_STATE == "NOTOFFBOARD") {
 
                         // send command to stay in the same position
                         // TODO: if doing position command in the lake lag frame, make
@@ -392,6 +427,8 @@ int ControlNode::run() {
                 }
 
                 if (_STATE == TAKEOFF) {
+
+                    _flight_alt = 50.0;
 
                     cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
                                      mavros_msgs::PositionTarget::IGNORE_PY |
@@ -798,10 +835,10 @@ int ControlNode::run() {
                     }
 
                 // Update state message
-                _droneState_msg.data = _STATE;
+                //_droneState_msg.data = _STATE;
 
                 _cmd_pub.publish(cmd);
-                _droneState_pub.publish(_droneState_msg);
+                //_droneState_pub.publish(_droneState_msg);
 
                 // remember need to always call spin once for the callbacks to trigger
                 ros::spinOnce();

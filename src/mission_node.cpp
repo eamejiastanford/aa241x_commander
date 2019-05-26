@@ -18,6 +18,19 @@
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
 
+#include <std_msgs/String.h>
+
+// Define states
+const std::string NOTOFFBOARD = "NOTOFFBOARD";
+const std::string TAKEOFF = "TAKEOFF";
+const std::string LINE = "LINE";
+const std::string LINE2 = "LINE2";
+const std::string LINE3 = "LINE3";
+const std::string GOHOME = "GOHOME";
+const std::string LAND = "LAND";
+const std::string Pt_Trajectory = "Pt_Trajectory";
+const std::string Perimeter_Search = "Perimeter_Search";
+
 /**
  * class to contain the functionality of the mission node.
  */
@@ -42,10 +55,15 @@ private:
 	// node handler
 	ros::NodeHandle _nh;
 
+        std::string _STATE;
+
 	// data
 	mavros_msgs::State _current_state;
 	geometry_msgs::PoseStamped _current_local_pos;
 	sensor_msgs::BatteryState _battery_state;
+
+        std_msgs::String _droneState_msg;
+        aa241x_mission::SensorMeasurement _beacon_msg;
 
 	// offset information
 	float _e_offset = 0.0f;
@@ -53,14 +71,17 @@ private:
 	float _u_offset = 0.0f;
 
 	// subscribers
-	ros::Subscriber _state_sub;			// the current state of the pixhawk
+        ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
 	ros::Subscriber _sensor_meas_sub;	// mission sensor measurement
-	ros::Subscriber _mission_state_sub; // mission state
+        ros::Subscriber _mission_state_sub;     // mission state
 	ros::Subscriber _battery_sub;		// the current battery information
+
 	// TODO: add subscribers here
 
 	// publishers
+        ros::Publisher _droneState_pub;         // the current state of the drone
+        ros::Publisher _beaconState_pub;        // the current state of the beacon information
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -101,6 +122,8 @@ private:
 	 */
 	void batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg);
 
+        void waitForFCUConnection();
+
 	// TODO: add callbacks here
 
 	// helper functions
@@ -117,6 +140,8 @@ MissionNode::MissionNode() {
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
 
 	// advertise the published detailed
+        _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
+        _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
 }
 
 
@@ -162,25 +187,40 @@ void MissionNode::batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg
 	// while loop in the run() function
 }
 
+void MissionNode::waitForFCUConnection() {
+        // wait for FCU connection by just spinning the callback until connected
+        ros::Rate rate(5.0);
+        while (ros::ok() && _current_state.connected) {
+                ros::spinOnce();
+                rate.sleep();
+        }
+}
+
 
 int MissionNode::run() {
-
 	// set the loop rate in [Hz]
 	ros::Rate rate(10.0);
 
 	// main loop
 	while (ros::ok()) {
+            // TODO: make high level decisions here
+            waitForFCUConnection();
+            ROS_INFO("connected to the FCU");
 
-		// TODO: make high level decisions here
+            // TODO: we recommend you publish high level commands (e.g. position or
+            // general direction) here that your control node will use to actually
+            // fly the given mission
+            _STATE = TAKEOFF;
+            if (_current_state.mode != "OFFBOARD") {
+                _STATE = NOTOFFBOARD;
 
-		// TODO: we recommend you publish high level commands (e.g. position or
-		// general direction) here that your control node will use to actually
-		// fly the given mission
+            }
+            _droneState_msg.data = _STATE;
+            _droneState_pub.publish(_droneState_msg);
 
-
-		// remember need to always call spin once for the callbacks to trigger
-		ros::spinOnce();
-		rate.sleep();
+            // remember need to always call spin once for the callbacks to trigger
+            ros::spinOnce();
+            rate.sleep();
 	}
 
 	// return  exit code
