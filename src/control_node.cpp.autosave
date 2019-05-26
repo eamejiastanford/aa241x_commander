@@ -378,7 +378,7 @@ int ControlNode::run() {
                 // NOTE: need to be streaming setpoints in order for offboard to be
                 // allowed, hence the publishing of an empty command
                 if (_current_state.mode != "OFFBOARD") {
-
+zc+
                         // send command to stay in the same position
                         // TODO: if doing position command in the lake lag frame, make
                         // sure these values match the initial position of the drone!
@@ -396,7 +396,7 @@ int ControlNode::run() {
                         cmd.position = pos;
                         cmd.velocity = vel;
                         _cmd_pub.publish(cmd);
-
+zc+
                         // run the ros components
                         ros::spinOnce();
                         rate.sleep();
@@ -465,7 +465,7 @@ int ControlNode::run() {
                         }
                         if (abs(vel.z) > _vzMax) {
                             vel.z = sign(vel.z) * _vzMax; // saturate vz
-                        }
+                        }zc+
 
                     }
 
