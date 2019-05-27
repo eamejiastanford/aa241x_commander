@@ -18,6 +18,7 @@
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Int64.h>
 #include <vector>
 
 // Define states
@@ -41,7 +42,7 @@ public:
          * example constructor.
          * @param flight_alt the desired altitude for the takeoff point.
          */
-        ControlNode(float flight_alt, float yaw_angle, float xLine, float yLine, float vDes);
+        ControlNode(float yaw_angle, float xLine, float yLine, float vDes);
 
         /**
          * the main loop to be run for this node (called by the `main` function)
@@ -57,7 +58,6 @@ private:
         ros::NodeHandle _nh;
 
         // TODO: add any settings, etc, here
-        float _flight_alt = 20.0f;		// desired flight altitude [m] AGL (above takeoff)
         float _thetaLine = 0.0f;
         float _xLine = 0.0f;
         float _yLine = 0.0f;
@@ -69,22 +69,17 @@ private:
         geometry_msgs::PoseStamped _current_local_pos;
         aa241x_mission::SensorMeasurement _current_sensor_meas;
         std::string _STATE;
-
-
+        float _flight_alt;
 
         std_msgs::String _droneState_msg;
         std_msgs::Float64 _dPerp_msg;
         std_msgs::Float64 _dAlongLine_msg;
+        std_msgs::Int64 _n_cycles_msg;
 
         // Beacon search initializations
         std::vector<int> _id;
         std::vector<float> _n;
         std::vector<float> _e;
-
-        // waypoint handling (example)
-        int _wp_index = -1;
-        int _n_waypoints = 1;
-        float _target_alt = 0.0f;
 
         // offset information
         float _e_offset = 0.0f;
@@ -103,6 +98,7 @@ private:
         ros::Subscriber _mission_state_sub;         // mission state
         ros::Subscriber _droneState_sub;            // the current state of the drone
         ros::Subscriber _beaconState_sub;           // the current state of the beacon information
+        ros::Subscriber _flight_alt_sub;            // the targeted flight altitude of the mission
         // TODO: add subscribers here
 
         // publishers
@@ -110,6 +106,7 @@ private:
 //ros::Publisher _droneState_pub;
         ros::Publisher _dPerp_pub;
         ros::Publisher _dAlongLine_pub;
+        ros::Publisher _n_cycles_pub;
 
         // callbacks
 
@@ -144,6 +141,8 @@ private:
 
         void droneStateCallback(const std_msgs::String::ConstPtr& msg);
 
+        void flightAltCallback(const std_msgs::Float64::ConstPtr& msg);
+
         // TODO: add callbacks here
 
         // helper functions
@@ -157,8 +156,8 @@ private:
 };
 
 
-ControlNode::ControlNode(float flight_alt, float thetaLine, float xLine, float yLine, float vDes) :
-_flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
+ControlNode::ControlNode(float thetaLine, float xLine, float yLine, float vDes) :
+_thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
 {
 
         // subscribe to the desired topics
@@ -167,7 +166,7 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         _sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &ControlNode::sensorMeasCallback, this);
         _droneState_sub = _nh.subscribe<std_msgs::String>("drone_state", 10, &ControlNode::droneStateCallback, this);
         _beaconState_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("beacon_state", 10, &ControlNode::beaconStateCallback, this);
-
+        _flight_alt_sub = _nh.subscribe<std_msgs::Float64>("flight_alt", 10, &ControlNode::flightAltCallback, this);
         // advertise the published detailed
 
         // publish a PositionTarget to the `/mavros/setpoint_raw/local` topic which
@@ -180,6 +179,7 @@ _flight_alt(flight_alt), _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _v
         // Publish data used in control
         _dPerp_pub = _nh.advertise<std_msgs::Float64>("dPerp", 10);
         _dAlongLine_pub = _nh.advertise<std_msgs::Float64>("dAlongLine", 10);
+        _n_cycles_pub = _nh.advertise<std_msgs::Int64>("n_cycles", 10);
 
 }
 
@@ -192,26 +192,6 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // save the current local position locally to be used in the main loop
         // TODO: account for offset to convert from PX4 coordinate to lake lag frame
         _current_local_pos = *msg;
-
-
-
-        // TODO: make sure to account for the offset if desiring to fly in the Lake Lag frame
-
-        // check to see if have completed the waypoint
-        // NOTE: for this case we only have a single waypoint
-        if (_wp_index == 0) {
-
-                float current_alt = _current_local_pos.pose.position.z;
-
-                // check conditio_sensor_meas_subn on being "close enough" to the waypoint
-                if (abs(current_alt - _flight_alt) < 0.1) {
-                        // update the target altitude to land, and increment the waypoint
-                        //_target_alt = 0;
-                       // _STATE = LINE;
-
-                        _wp_index++;
-                }
-        }
 }
 
 void ControlNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
@@ -241,6 +221,10 @@ void ControlNode::beaconStateCallback(const aa241x_mission::SensorMeasurement::C
         _id = msg->id;
         _n = msg->n;
         _e = msg->e;
+}
+
+void ControlNode::flightAltCallback(const std_msgs::Float64::ConstPtr& msg) {
+        _flight_alt = msg->data;
 }
 
 
@@ -294,12 +278,10 @@ int sign(float x) {
 
 
 int ControlNode::run() {
-        //_STATE = TAKEOFF;
         int angle = 50;
         int count = 0;
         int cycle = 0;
         float radius = 150; //160
-        _flight_alt = 50.0;
 
         // wait for the controller connection
         waitForFCUConnection();
@@ -420,15 +402,7 @@ int ControlNode::run() {
                 // at this point the pixhawk is in offboard control, so we can now fly
                 // the drone as desired
 
-                // set the first waypoint
-                if (_wp_index < 0) {
-                        _wp_index = 0;
-                        _target_alt = _flight_alt;
-                }
-
                 if (_STATE == TAKEOFF) {
-
-                    _flight_alt = 50.0;
 
                     cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
                                      mavros_msgs::PositionTarget::IGNORE_PY |
@@ -461,12 +435,6 @@ int ControlNode::run() {
                     cmd.position = pos;
                     cmd.velocity = vel;
                     cmd.yaw = yaw;
-
-                    if (abs(zc - _flight_alt) < 0.1) {
-                        //_STATE = LINE;
-                        //_STATE = Pt_Trajectory;
-                        _STATE = Perimeter_Search;
-                    }
 
                 }
                 else if (_STATE == Perimeter_Search){
@@ -530,9 +498,8 @@ int ControlNode::run() {
                         angle = 0;
                         radius = radius-diameter_search;
                         cycle = cycle + 1;
-                        if (cycle == 5){//static_cast<int>(radius/radius_search)){ // completed two rotations
-                            _STATE = GOHOME;
-                        }
+                        _n_cycles_msg.data = cycle;
+                        _n_cycles_pub.publish(_n_cycles_msg);
                     }
 
                 }
@@ -793,10 +760,6 @@ int ControlNode::run() {
                     cmd.velocity = vel;
                     cmd.yaw = atan2(vel.y,vel.x);
 
-                    if (abs(xc-x0)<=0.1 && abs(yc-y0)<=0.1){
-                        _STATE = LAND;
-                    }
-
 
                 }
                 else if( _STATE == LAND){
@@ -831,7 +794,6 @@ int ControlNode::run() {
                     cmd.position = pos;
                     cmd.velocity = vel;
                     cmd.yaw = yaw;
-
                     }
 
                 // Update state message
@@ -860,7 +822,6 @@ int main(int argc, char **argv) {
         ros::NodeHandle private_nh("~");
         // TODO: determine settings
 
-        float alt_desired = 50.0;
         // Line to follow:
         float thetaLine_desired = 245.0*M_PI/180.0; // Measured CCW from SOUTH, defines forward
         float xLine= -10.0;
@@ -870,7 +831,7 @@ int main(int argc, char **argv) {
         float vDes = 2.0f;
 
         // create the node
-        ControlNode node(alt_desired,thetaLine_desired, xLine, yLine, vDes);
+        ControlNode node(thetaLine_desired, xLine, yLine, vDes);
 
         // run the node
         return node.run();

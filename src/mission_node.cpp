@@ -19,6 +19,8 @@
 #include <aa241x_mission/MissionState.h>
 
 #include <std_msgs/String.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Int64.h>
 
 // Define states
 const std::string NOTOFFBOARD = "NOTOFFBOARD";
@@ -56,6 +58,8 @@ private:
 	ros::NodeHandle _nh;
 
         std::string _STATE;
+        float _flight_alt;
+        int _n_cycles;
 
 	// data
 	mavros_msgs::State _current_state;
@@ -64,6 +68,7 @@ private:
 
         std_msgs::String _droneState_msg;
         aa241x_mission::SensorMeasurement _beacon_msg;
+        std_msgs::Float64 _flight_alt_msg;
 
 	// offset information
 	float _e_offset = 0.0f;
@@ -76,12 +81,14 @@ private:
 	ros::Subscriber _sensor_meas_sub;	// mission sensor measurement
         ros::Subscriber _mission_state_sub;     // mission state
 	ros::Subscriber _battery_sub;		// the current battery information
+        ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
 
 	// TODO: add subscribers here
 
 	// publishers
         ros::Publisher _droneState_pub;         // the current state of the drone
         ros::Publisher _beaconState_pub;        // the current state of the beacon information
+        ros::Publisher _flight_alt_pub;         // the targeted flight altitude of the mission
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -122,6 +129,8 @@ private:
 	 */
 	void batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg);
 
+        void nCyclesCallback(const std_msgs::Int64::ConstPtr& msg);
+
         void waitForFCUConnection();
 
 	// TODO: add callbacks here
@@ -138,10 +147,12 @@ MissionNode::MissionNode() {
 	_local_pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 1, &MissionNode::localPosCallback, this);
 	_sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &MissionNode::sensorMeasCallback, this);
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
+        _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
 
 	// advertise the published detailed
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
         _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
+        _flight_alt_pub = _nh.advertise<std_msgs::Float64>("flight_alt", 10);
 }
 
 
@@ -187,6 +198,10 @@ void MissionNode::batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg
 	// while loop in the run() function
 }
 
+void MissionNode::nCyclesCallback(const std_msgs::Int64::ConstPtr& msg) {
+        _n_cycles = msg->data;
+}
+
 void MissionNode::waitForFCUConnection() {
         // wait for FCU connection by just spinning the callback until connected
         ros::Rate rate(5.0);
@@ -207,17 +222,50 @@ int MissionNode::run() {
 
 	// main loop
 	while (ros::ok()) {
+
+            float x0;
+            float y0;
+            float z0;
+
+            float xc = _current_local_pos.pose.position.x;
+            float yc = _current_local_pos.pose.position.y;
+            float zc = _current_local_pos.pose.position.z;
+            float qx = _current_local_pos.pose.orientation.x;
+            float qy = _current_local_pos.pose.orientation.y;
+            float qz = _current_local_pos.pose.orientation.z;
+            float qw = _current_local_pos.pose.orientation.w;
             // TODO: make high level decisions here
 
 
             // TODO: we recommend you publish high level commands (e.g. position or
             // general direction) here that your control node will use to actually
             // fly the given mission
-            _STATE = TAKEOFF;
             if (_current_state.mode != "OFFBOARD") {
                 _STATE = NOTOFFBOARD;
+                x0 = xc;
+                y0 = yc;
+                z0 = zc;
 
             }
+            _STATE = TAKEOFF;
+            _flight_alt = 50.0;
+
+            if (abs(zc - _flight_alt) < 0.1) {
+                _STATE = Perimeter_Search;
+            }
+            if (_n_cycles == 1){//static_cast<int>(radius/radius_search)){ // completed two rotations
+                _STATE = GOHOME;
+            }
+            if (_STATE == GOHOME) {
+            if (abs(xc-x0)<=0.1 && abs(yc-y0)<=0.1){
+                _STATE = LAND;
+                _flight_alt = 0.0;
+            }
+            }
+
+            _flight_alt_msg.data = _flight_alt;
+            _flight_alt_pub.publish(_flight_alt_msg);
+
             _droneState_msg.data = _STATE;
             _droneState_pub.publish(_droneState_msg);
 
