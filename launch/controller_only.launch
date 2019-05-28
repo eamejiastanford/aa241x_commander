@@ -15,8 +15,6 @@
     </node>
 
 	<!-- logging -->
-	<!--
 	<include file="$(find aa241x_commander)/launch/log_position.launch" />
-	-->
 
 </launch>

@@ -120,7 +120,7 @@ private:
 	 * this includes the offset information for the lake lag coordinate frame
 	 * @param msg mission state
 	 */
-        void missionStateCalxlback(const aa241x_mission::MissionState::ConstPtr& msg);
+        void missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg);
 
 	/**
 	 * callback for the battery information from the Pixhawk.
