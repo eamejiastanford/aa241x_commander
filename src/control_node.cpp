@@ -269,49 +269,6 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         orient[3] = qz;
         toEulerAngle(orient);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 
 void ControlNode::localTwistCallback(const geometry_msgs::TwistStamped::ConstPtr& msg) {
