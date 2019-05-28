@@ -120,7 +120,7 @@ private:
 	 * this includes the offset information for the lake lag coordinate frame
 	 * @param msg mission state
 	 */
-	void missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg);
+        void missionStateCalxlback(const aa241x_mission::MissionState::ConstPtr& msg);
 
 	/**
 	 * callback for the battery information from the Pixhawk.
@@ -214,6 +214,9 @@ void MissionNode::waitForFCUConnection() {
 
 int MissionNode::run() {
 
+        // Initially, only valid state is takeoff
+        _STATE = TAKEOFF;
+
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
 
@@ -234,38 +237,47 @@ int MissionNode::run() {
             float qy = _current_local_pos.pose.orientation.y;
             float qz = _current_local_pos.pose.orientation.z;
             float qw = _current_local_pos.pose.orientation.w;
-            // TODO: make high level decisions here
 
-
-            // TODO: we recommend you publish high level commands (e.g. position or
-            // general direction) here that your control node will use to actually
-            // fly the given mission
+            // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
-                _STATE = NOTOFFBOARD;
                 x0 = xc;
                 y0 = yc;
                 z0 = zc;
 
             }
-            _STATE = TAKEOFF;
+
+            // Set flight parameters
             _flight_alt = 50.0;
 
-            if (abs(zc - _flight_alt) < 0.1) {
-                _STATE = Perimeter_Search;
+            // State machine
+            if     (_STATE == TAKEOFF) {
+                // Check if we are close enough to finishing takeoff
+                if(abs(zc - _flight_alt) < 0.1) {
+                    _STATE = Perimeter_Search;
+                }
+
             }
-            if (_n_cycles == 1){//static_cast<int>(radius/radius_search)){ // completed two rotations
-                _STATE = GOHOME;
+            else if(_STATE == Perimeter_Search) {
+                // Check if we have completed enough cycles
+                if(_n_cycles == 1) {//static_cast<int>(radius/radius_search)){ // completed two rotations
+                    _STATE = GOHOME;
+                }
+
             }
-            if (_STATE == GOHOME) {
-            if (abs(xc-x0)<=0.1 && abs(yc-y0)<=0.1){
-                _STATE = LAND;
-                _flight_alt = 0.0;
-            }
+            else if(_STATE == GOHOME) {
+                // Check if we are close enough to landing location
+                if(abs(xc - x0) <= 0.1 && abs(yc - y0) <= 0.1) {
+                    _STATE = LAND;
+                    _flight_alt = 0.0;
+                }
+
             }
 
+            // Publish flight data
             _flight_alt_msg.data = _flight_alt;
             _flight_alt_pub.publish(_flight_alt_msg);
 
+            // Publish drone mission state
             _droneState_msg.data = _STATE;
             _droneState_pub.publish(_droneState_msg);
 

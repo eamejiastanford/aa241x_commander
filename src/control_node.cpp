@@ -71,6 +71,19 @@ private:
         std::string _STATE;
         float _flight_alt;
 
+        // Physical state variables
+        float _xc;
+        float _yc;
+        float _zc;
+        float _roll;
+        float _pitch;
+        float _yaw;
+
+        // Takeoff position variables
+        float _x0;
+        float _y0;
+        float _z0;
+
         std_msgs::String _droneState_msg;
         std_msgs::Float64 _dPerp_msg;
         std_msgs::Float64 _dAlongLine_msg;
@@ -103,7 +116,6 @@ private:
 
         // publishers
         ros::Publisher _cmd_pub;
-//ros::Publisher _droneState_pub;
         ros::Publisher _dPerp_pub;
         ros::Publisher _dAlongLine_pub;
         ros::Publisher _n_cycles_pub;
@@ -142,6 +154,8 @@ private:
         void droneStateCallback(const std_msgs::String::ConstPtr& msg);
 
         void flightAltCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void toEulerAngle(const float q[4]);
 
         // TODO: add callbacks here
 
@@ -192,11 +206,30 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // save the current local position locally to be used in the main loop
         // TODO: account for offset to convert from PX4 coordinate to lake lag frame
         _current_local_pos = *msg;
+
+        // Get the position
+        _xc = _current_local_pos.pose.position.x; // N
+        _yc = _current_local_pos.pose.position.y; // E
+        _zc = _current_local_pos.pose.position.z; // U
+
+        // Get the orientation
+        float qx = _current_local_pos.pose.orientation.x;
+        float qy = _current_local_pos.pose.orientation.y;
+        float qz = _current_local_pos.pose.orientation.z;
+        float qw = _current_local_pos.pose.orientation.w;
+
+        // Map quaternions to Euler angles
+        float orient[4];
+        orient[0] = qw;
+        orient[1] = qx;
+        orient[2] = qy;
+        orient[3] = qz;
+        toEulerAngle(orient);
+
 }
 
 void ControlNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
         // TODO: use the information from the measurement as desired
-
         // NOTE: this callback is for an example of how to setup a callback, you may
         // want to move this information to a mission handling node
         _id = msg->id;
@@ -238,7 +271,7 @@ void ControlNode::waitForFCUConnection() {
 }
 
 // Computes euler angles from quaternions. Sequence is yaw, pitch, roll
-static void toEulerAngle(const float q[4], float& roll, float& pitch, float& yaw)
+void ControlNode::toEulerAngle(const float q[4])
 {
 
     float qw = q[0];
@@ -249,19 +282,19 @@ static void toEulerAngle(const float q[4], float& roll, float& pitch, float& yaw
     // Yaw:
     double sinr_cosp = +2.0 * (qw*qw + qy*qz);
     double cosr_cosp = +1.0 - 2.0*(qx*qx + qy*qy);
-    yaw = atan2(sinr_cosp, cosr_cosp);
+    _yaw = atan2(sinr_cosp, cosr_cosp);
 
     // Pitch:
     double sinp = +2.0 * (qw*qy - qz*qx);
     if (fabs(sinp) >=1)
-        pitch = copysign(M_PI / 2, sinp); //use 90 degrees if out of range
+        _pitch = copysign(M_PI / 2, sinp); //use 90 degrees if out of range
     else
-        pitch = asin(sinp);
+        _pitch = asin(sinp);
 
     //Roll:
     double siny_cosp = +2.0 * (qw*qz + qx*qy);
     double cosy_cosp = +1.0 - 2.0*(qy*qy + qz*qz);
-    roll = atan2(siny_cosp,cosy_cosp);
+    _roll = atan2(siny_cosp,cosy_cosp);
 
 }
 
@@ -292,10 +325,6 @@ int ControlNode::run() {
         mavros_msgs::PositionTarget cmd;
         cmd.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;	// use the local frame
 
-        // configure the type mask to command only position information
-        // NOTE: type mask sets the fields to IGNORE
-        // TODO: need to add a link to the mask to explain the value
-
         // the yaw information
         // NOTE: just keeping the heading north
         cmd.yaw = 0;
@@ -318,27 +347,8 @@ int ControlNode::run() {
         // NOTE: must be faster than 2Hz
         ros::Rate rate(10.0);
 
-
         // main loop
         while (ros::ok()) {
-                // Get state for control
-                float xc = _current_local_pos.pose.position.x;
-                float yc = _current_local_pos.pose.position.y;
-                float zc = _current_local_pos.pose.position.z;
-                float qx = _current_local_pos.pose.orientation.x;
-                float qy = _current_local_pos.pose.orientation.y;
-                float qz = _current_local_pos.pose.orientation.z;
-                float qw = _current_local_pos.pose.orientation.w;
-
-
-                float orient[4];
-                float roll;
-                float pitch;
-                float yaw;
-
-                float x0;
-                float y0;
-                float z0;
 
                 float x1;
                 float y1;
@@ -354,19 +364,12 @@ int ControlNode::run() {
 
                 float dPerpInit;
 
-                orient[0] = qw;
-                orient[1] = qx;
-                orient[2] = qy;
-                orient[3] = qz;
-
-                toEulerAngle(orient, roll, pitch, yaw);
-
                 // if not in offboard mode, just keep waiting until we are and if not
                 // enabled, then keep waiting
                 //
                 // NOTE: need to be streaming setpoints in order for offboard to be
                 // allowed, hence the publishing of an empty command
-                if (_STATE == "NOTOFFBOARD") {
+                if (_current_state.mode != "OFFBOARD") {
 
                         // send command to stay in the same position
                         // TODO: if doing position command in the lake lag frame, make
@@ -376,9 +379,9 @@ int ControlNode::run() {
                         pos.z = 0;
 
                         // Define home position as position when offboard mode is initiated
-                        x0 = xc;
-                        y0 = yc;
-                        z0 = zc;
+                        _x0 = _xc;
+                        _y0 = _yc;
+                        _z0 = _zc;
 
                         // timestamp the message and send it
                         cmd.header.stamp = ros::Time::now();
@@ -392,12 +395,6 @@ int ControlNode::run() {
                         continue;
 
                 }
-
-                // TODO: if drone is not armed at this point, need to send a command to
-                // arm it
-                //
-                // NOTE: this can be done from either the callback or this main
-                // function, so need to decide where I want to put it
 
                 // at this point the pixhawk is in offboard control, so we can now fly
                 // the drone as desired
@@ -417,7 +414,7 @@ int ControlNode::run() {
                     // Commnad velocities to control position
                     vel.x = 0.0; // Don't translate laterally
                     vel.y = 0.0; // Don't translate laterally
-                    vel.z = -kpz * (zc - _flight_alt);
+                    vel.z = -kpz * (_zc - _flight_alt);
 
                     // Saturate velocities
                     if (abs(vel.x) > _vxMax) {
@@ -434,7 +431,7 @@ int ControlNode::run() {
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
-                    cmd.yaw = yaw;
+                    cmd.yaw = _yaw;
 
                 }
                 else if (_STATE == Perimeter_Search){
@@ -449,8 +446,7 @@ int ControlNode::run() {
                     float center_x = -160;
                     float center_y = -70;
 
-
-                    float diameter_search = (5/7)*zc+28.57; // Diameter of ground below drone which is realized
+                    float diameter_search = (5/7)*_zc+28.57; // Diameter of ground below drone which is realized
                     float radius_search = diameter_search/2;
 
                     // Perform sweep of circle outer perimeter:
@@ -458,8 +454,8 @@ int ControlNode::run() {
                     float yL = (radius-radius_search)*sin(angle*M_PI/180.0)+center_y;
 
                     // Distance between point and current location
-                    float xpt = xL-xc;
-                    float ypt = yL-yc;
+                    float xpt = xL-_xc;
+                    float ypt = yL-_yc;
                     float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
 
                     // Define gains for point to point travel
@@ -468,9 +464,9 @@ int ControlNode::run() {
                     float kpz = 1.0;
 
                     // Proportional position control
-                    vel.x = -kpx * (xc - xL);
-                    vel.y = -kpy * (yc - yL);
-                    vel.z = -kpz * (zc - _flight_alt);
+                    vel.x = -kpx * (_xc - xL);
+                    vel.y = -kpy * (_yc - yL);
+                    vel.z = -kpz * (_zc - _flight_alt);
 
                     // Saturation of velocities
                     if (abs(vel.x) > _vxMax) {
@@ -520,7 +516,7 @@ int ControlNode::run() {
                     float radius = 150; //160
                     // x Bounds: -10,-310; y Bounds: +80, -220
 
-                    float diameter_search = (5/7)*zc+28.57; // Diameter of ground below drone which is realized
+                    float diameter_search = (5/7)*_zc+28.57; // Diameter of ground below drone which is realized
                     float radius_search = diameter_search/2;
 
                     // Perform sweep of circle outer perimeter:
@@ -538,8 +534,8 @@ int ControlNode::run() {
                     float yL = yPosVector[count];
 
                     // Distance between point and current location
-                    float xpt = xL-xc;
-                    float ypt = yL-yc;
+                    float xpt = xL-_xc;
+                    float ypt = yL-_yc;
                     float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
 
                     // Define gains for point to point travel
@@ -548,9 +544,9 @@ int ControlNode::run() {
                     float kpz = 1.0;
 
                     // Proportional position control
-                    vel.x = -kpx * (xc - xL);
-                    vel.y = -kpy * (yc - yL);
-                    vel.z = -kpz * (zc - _flight_alt);
+                    vel.x = -kpx * (_xc - xL);
+                    vel.y = -kpy * (_yc - yL);
+                    vel.z = -kpz * (_zc - _flight_alt);
 
                     // Saturation of velocities
                     if (abs(vel.x) > _vxMax) {
@@ -574,19 +570,18 @@ int ControlNode::run() {
                     if (pt_dist <= 2.0){
                         count = count + 1;
                         if (count == size){ //Last point has been reached
-                            _STATE = GOHOME;
+                            //_STATE = GOHOME;
                         }
                     }
 
                 }
-
                 else if(_STATE == LINE) {
 
                     cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
 
                     // Compute tangential distance to line
-                    float dperp = sin(_thetaLine)*(_yLine-yc) + cos(_thetaLine)*(_xLine-xc);
-                    float dAlongLine = -cos(_thetaLine)*(y0-yc) + sin(_thetaLine)*(x0-xc); // Position projection along line from drone starting point to current position
+                    float dperp = sin(_thetaLine)*(_yLine-_yc) + cos(_thetaLine)*(_xLine-_xc);
+                    float dAlongLine = -cos(_thetaLine)*(_y0-_yc) + sin(_thetaLine)*(_x0-_xc); // Position projection along line from drone starting point to current position
 
                     // Define line distance gains
                     float dp = 5;
@@ -626,103 +621,13 @@ int ControlNode::run() {
 
                     if (abs(dAlongLine) >= 260.0){
                         //_STATE = LINE2;
-                        _STATE = GOHOME;
-                        x1 = xc;
-                        y1 = yc;
-                        _xLine = xc;
-                        _yLine = yc;
+                        //_STATE = GOHOME;
+                        x1 = _xc;
+                        y1 = _yc;
+                        _xLine = _xc;
+                        _yLine = _yc;
                         _thetaLine = _thetaLine + 17.0 * M_PI / 32.0;
                      }
-                }
-                else if(_STATE == LINE2) {
-
-                    cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
-
-                    // Compute tangential distance to line
-                    float dperp = sin(_thetaLine)*(_yLine-yc) + cos(_thetaLine)*(_xLine-xc);
-                    float dAlongLine = -cos(_thetaLine)*(y0-yc) + sin(_thetaLine)*(x0-xc); // Position projection along line from drone starting point to current position
-
-                    // Define line distance gains
-                    float dp = 5;
-                    float kp = _vDes/dp;
-
-                    // Command speed towards line and along line
-                    float up = kp*dperp; // line y
-                    float vp = _vDes; // line x
-
-                    // Map to global with velocity saturation:
-                    vx = up*cos(_thetaLine) + vp*sin(_thetaLine);
-                    vy = up*sin(_thetaLine) - vp*cos(_thetaLine);
-                    vel.x = vx;
-                    vel.y = vy;
-                    if (abs(vx) > _vxMax) {
-                        vel.x = sign(vx) * _vxMax; // saturate vx
-                    }
-                    if (abs(vy) > _vyMax) {
-                        vel.y = sign(vy) * _vyMax; // saturate vy
-                    }
-
-                    // Set the yaw angle and the position
-                    //cmd.yaw = _thetaLine - M_PI/2.0; // yaw in Pixhawk measured CCW from EAST
-                    cmd.yaw = atan2(vel.y,vel.x);
-                    pos.z = _flight_alt;
-
-                    // publish the command
-                    cmd.header.stamp = ros::Time::now();
-                    cmd.position = pos;
-                    cmd.velocity = vel;
-
-                    if (abs(dAlongLine) >= 230.0){
-                        _STATE = LINE3;
-                        x1 = xc;
-                        y1 = yc;
-                        _xLine = xc;
-                        _yLine = yc;
-                        _thetaLine = _thetaLine + 60 * M_PI / 180.0;
-                     }
-                }
-                else if(_STATE == LINE3) {
-
-                    cmd.type_mask = 2499;  // mask for Vx Vy and Pz control
-
-                    // Compute tangential distance to line
-                    float dperp = sin(_thetaLine)*(_yLine-yc) + cos(_thetaLine)*(_xLine-xc);
-                    float dAlongLine = -cos(_thetaLine)*(y1-yc) + sin(_thetaLine)*(x1-xc); // Position projection along line from drone starting point to current position
-
-                    // Define line distance gains
-                    float dp = 5;
-                    float kp = _vDes/dp;
-
-                    // Command speed towards line and along line
-                    float up = kp*dperp; // line y
-                    float vp = _vDes; // line x
-
-                    // Map to global with velocity saturation:
-                    vx = up*cos(_thetaLine) + vp*sin(_thetaLine);
-                    vy = up*sin(_thetaLine) - vp*cos(_thetaLine);
-                    vel.x = vx;
-                    vel.y = vy;
-                    if (abs(vx) > _vxMax) {
-                        vel.x = sign(vx) * _vxMax; // saturate vx
-                    }
-                    if (abs(vy) > _vyMax) {
-                        vel.y = sign(vy) * _vyMax; // saturate vy
-                    }
-
-                    // Set the yaw angle and the position
-                    //cmd.yaw = _thetaLine - M_PI/2.0; // yaw in Pixhawk measured CCW from EAST
-                    cmd.yaw = atan2(vel.y,vel.x);
-                    pos.z = _flight_alt;
-
-                    // publish the command
-                    cmd.header.stamp = ros::Time::now();
-                    cmd.position = pos;
-                    cmd.velocity = vel;
-
-                    if (abs(dAlongLine) >= 180.0){
-                        _STATE = GOHOME;
-                     }
-
                 }
                 else if(_STATE == GOHOME) {
                     cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
@@ -739,9 +644,9 @@ int ControlNode::run() {
                     float kpz = 1.0;
 
                     // Define controls on position
-                    vel.x = -kpx * (xc - x0);
-                    vel.y = -kpy * (yc - y0);
-                    vel.z = -kpz * (zc - _flight_alt);
+                    vel.x = -kpx * (_xc - _x0);
+                    vel.y = -kpy * (_yc - _y0);
+                    vel.z = -kpz * (_zc - _flight_alt);
 
                     // Saturate velocities
                     if (abs(vel.x) > _vxMax) {
@@ -776,7 +681,7 @@ int ControlNode::run() {
                     // Commnad velocities to control position
                     vel.x = 0.0; // Don't translate laterally
                     vel.y = 0.0; // Don't translate laterally
-                    vel.z = -kpz * (zc - z0);
+                    vel.z = -kpz * (_zc - _z0);
 
                     // Saturate velocities
                     if (abs(vel.x) > _vxMax) {
@@ -793,8 +698,8 @@ int ControlNode::run() {
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
-                    cmd.yaw = yaw;
-                    }
+                    cmd.yaw = _yaw;
+               }
 
                 // Update state message
                 //_droneState_msg.data = _STATE;
