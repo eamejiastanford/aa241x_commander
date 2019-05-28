@@ -17,6 +17,7 @@
 
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
+#include <aa241x_mission/RequestLandingPosition.h>
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
@@ -75,6 +76,10 @@ private:
 	float _n_offset = 0.0f;
 	float _u_offset = 0.0f;
 
+	// landing position
+	float _landing_e = 0.0f;
+	float _landing_n = 0.0f;
+
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
@@ -84,6 +89,9 @@ private:
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
 
 	// TODO: add subscribers here
+
+	//service
+	ros::ServiceClient _landing_loc_client;
 
 	// publishers
         ros::Publisher _droneState_pub;         // the current state of the drone
@@ -148,6 +156,9 @@ MissionNode::MissionNode() {
 	_sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &MissionNode::sensorMeasCallback, this);
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
         _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
+
+	// service
+	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
 
 	// advertise the published detailed
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
@@ -220,6 +231,17 @@ int MissionNode::run() {
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
 
+	// get the landing position
+        aa241x_mission::RequestLandingPosition srv;
+        if (_landing_loc_client.call(srv)) {
+             // NOTE: saving the landing East and North coordinates to class member variables
+             _landing_e = srv.response.east;
+             _landing_n = srv.response.north;
+             ROS_INFO("landing coordinate: (%0.2f, %0.2f)", _landing_n, _landing_e);
+        } else {
+             ROS_ERROR("unable to get landing location in Lake Lag frame!");
+        }
+
 	// set the loop rate in [Hz]
 	ros::Rate rate(10.0);
 
@@ -266,7 +288,7 @@ int MissionNode::run() {
             }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
-                if(abs(xc - x0) <= 0.1 && abs(yc - y0) <= 0.1) {
+                if(abs(xc - _landing_e) <= 0.1 && abs(yc - _landing_n) <= 0.1) {
                     _STATE = LAND;
                     _flight_alt = 0.0;
                 }
