@@ -16,6 +16,7 @@
 
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
+#include <aa241x_mission/RequestLandingPosition.h>
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
@@ -28,7 +29,6 @@ const std::string LINE = "LINE";
 const std::string GOHOME = "GOHOME";
 const std::string LAND = "LAND";
 const std::string DROP_ALT = "DROP_ALT";
-const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 
 /**
@@ -71,6 +71,10 @@ private:
         std::string _STATE;
         float _flight_alt;
 
+        // landing position
+        float _landing_e = 0.0f;
+        float _landing_n = 0.0f;
+
         // Physical state variables
         float _xc;
         float _yc;
@@ -97,7 +101,6 @@ private:
         std_msgs::Float64 _currentYaw_msg;
         std_msgs::Int64 _n_cycles_msg;
         geometry_msgs::TwistStamped _current_local_twist;
-
 
         // Beacon search initializations
         std::vector<int> _id;
@@ -134,10 +137,23 @@ private:
         ros::Publisher _currentYaw_pub;
         ros::Publisher _n_cycles_pub;
 
+        //service
+        ros::ServiceClient _landing_loc_client;
+
         // callbacks
 
         /**
          * callback for the current state of the pixhawk.
+        // get the landing position
+        aa241x_mission::RequestLandingPosition srv;
+        if (_landing_loc_client.call(srv)) {
+             // NOTE: saving the landing East and North coordinates to class member variables
+             _landing_e = srv.response.east;
+             _landing_n = srv.response.north;
+             ROS_INFO("landing coordinate: (%0.2f, %0.2f)", _landing_n, _landing_e);
+        } else {
+             ROS_ERROR("unable to get landing location in Lake Lag frame!");
+}
          * @param msg mavros state message
          */
         void stateCallback(const mavros_msgs::State::ConstPtr& msg);
@@ -171,6 +187,7 @@ private:
         void flightAltCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void toEulerAngle(const float q[4]);
+        //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
 
         // TODO: add callbacks here
 
@@ -213,6 +230,9 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _n_cycles_pub = _nh.advertise<std_msgs::Int64>("n_cycles", 10);
         _currentYaw_pub = _nh.advertise<std_msgs::Float64>("currentYaw", 10);
 
+        // service
+        _landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
+
 }
 
 void ControlNode::stateCallback(const mavros_msgs::State::ConstPtr& msg) {
@@ -248,6 +268,49 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         orient[2] = qy;
         orient[3] = qz;
         toEulerAngle(orient);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }
 
@@ -356,6 +419,17 @@ int ControlNode::run() {
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
 
+        // get the landing position
+        aa241x_mission::RequestLandingPosition srv;
+        if (_landing_loc_client.call(srv)) {
+             // NOTE: saving the landing East and North coordinates to class member variables
+             _landing_e = srv.response.east;
+             _landing_n = srv.response.north;
+             ROS_INFO("landing coordinate: (%0.2f, %0.2f)", _landing_n, _landing_e);
+        } else {
+             ROS_ERROR("unable to get landing location in Lake Lag frame!");
+        }
+
         // set up the general command parameters
         // NOTE: these will be true for all commands send
         mavros_msgs::PositionTarget cmd;
@@ -407,7 +481,8 @@ int ControlNode::run() {
                 // allowed, hence the publishing of an empty command
                 if (_current_state.mode != "OFFBOARD") {
 
-                        // send command to stay in the same position
+                        // send command to stay in the same position                if(abs(_zc - _flight_alt) < 0.1) {
+
                         // TODO: if doing position command in the lake lag frame, make
                         // sure these values match the initial position of the drone!
                         pos.x = 0;
@@ -504,7 +579,8 @@ int ControlNode::run() {
 
                     float diameter_search = (5/7)*_zc+28.57; // Diameter of ground below drone which is realized
                     //double lake_ctr_lat = 37.4224444;		// [deg]
-                    //double lake_ctr_lon = -122.1760917;	// [deg]
+                    //double lake_ctr_lon = -122.1760917;	// [deg]                    //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
+
                     // Given these lat and long coordinates, the center of the circle is found relative to the drone
                     float center_x = -160;//_e_offset; //_current_lon - lake_ctr_lon; //-160;
                     float center_y = -70;//_n_offset; //_current_lat - lake_ctr_lat; //-70;
@@ -552,17 +628,12 @@ int ControlNode::run() {
 //                    }
 
 
-
                     if (abs(vel.x) > _vxMax) {
                         vel.x = sign(vel.x) * _vxMax; // saturate vx
                     }
                     if (abs(vel.y) > _vyMax) {
                         vel.y = sign(vel.y) * _vyMax; // saturate vy
                     }
-
-                    // Set the yaw angle and the position
-                    //cmd.yaw = atan2(vel.y,vel.x);
-                    pos.z = _flight_alt;
 
                     // Set desired yaw angle based on velocity in x-y N-E plane
                     float yawDes = atan2(_vyc, _vxc);
@@ -592,7 +663,6 @@ int ControlNode::run() {
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
-                    //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
 
                     // If it reaches the objective point, switch points to acquire next point trajectory
                     if (pt_dist <= 15.0){
@@ -605,82 +675,6 @@ int ControlNode::run() {
                         _n_cycles_msg.data = cycle;
                         _n_cycles_pub.publish(_n_cycles_msg);
 
-                    }
-
-                }
-                else if(_STATE == Pt_Trajectory) {
-                    cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
-                                     mavros_msgs::PositionTarget::IGNORE_PY |
-                                     mavros_msgs::PositionTarget::IGNORE_PZ |
-                                     mavros_msgs::PositionTarget::IGNORE_AFX |
-                                     mavros_msgs::PositionTarget::IGNORE_AFY |
-                                     mavros_msgs::PositionTarget::IGNORE_AFZ |
-                                     mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
-
-
-                    // Generalize this later to be based off longitude and lattitude, not distance from current position
-                    float center_x = -160;
-                    float center_y = -70;
-
-                    float radius = 150; //160
-                    // x Bounds: -10,-310; y Bounds: +80, -220
-
-                    float diameter_search = (5/7)*_zc+28.57; // Diameter of ground below drone which is realized
-                    float radius_search = diameter_search/2;
-
-                    // Perform sweep of circle outer perimeter:
-                    // Initial sweep of outer circle to include bounds
-                    xPosVector[0] = (radius-radius_search)*cos(angle*M_PI/180.0)+center_x;
-                    yPosVector[0] = (radius-radius_search)*sin(angle*M_PI/180.0)+center_y;
-                    //When angle gets to 360 degrees, switch to inner circle:
-                    xPosVector[2] = -250;
-                    yPosVector[2] = -60;
-
-                    int size = 5; //length of x or y vector; make this generalized later
-
-                    // Point of interest:
-                    float xL = xPosVector[count];
-                    float yL = yPosVector[count];
-
-                    // Distance between point and current location
-                    float xpt = xL-_xc;
-                    float ypt = yL-_yc;
-                    float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
-
-                    // Define gains for point to point travel
-                    float kpx = 1.0;
-                    float kpy = 1.0;
-                    float kpz = 1.0;
-
-                    // Proportional position control
-                    vel.x = -kpx * (_xc - xL);
-                    vel.y = -kpy * (_yc - yL);
-                    vel.z = -kpz * (_zc - _flight_alt);
-
-                    // Saturation of velocities
-                    if (abs(vel.x) > _vxMax) {
-                        vel.x = sign(vel.x) * _vxMax; // saturate vx
-                    }
-                    if (abs(vel.y) > _vyMax) {
-                        vel.y = sign(vel.y) * _vyMax; // saturate vy
-                    }
-
-                    // Set the yaw angle and the position
-                    cmd.yaw = atan2(vel.y,vel.x);
-                    pos.z = _flight_alt;
-
-                    // publish the command
-                    cmd.header.stamp = ros::Time::now();
-                    cmd.position = pos;
-                    cmd.velocity = vel;
-                    cmd.yaw = atan2(vel.y,vel.x);
-
-                    // If it reaches the objective point, switch points to acquire next trajectory
-                    if (pt_dist <= 2.0){
-                        count = count + 1;
-                        if (count == size){ //Last point has been reached
-                            //_STATE = GOHOME;
-                        }
                     }
 
                 }
@@ -738,10 +732,10 @@ int ControlNode::run() {
                         _thetaLine = _thetaLine + 17.0 * M_PI / 32.0;
                      }
                 }
-
                 else if(_STATE == GOHOME) {
                     cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
                                      mavros_msgs::PositionTarget::IGNORE_PY |
+                                     //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
                                      mavros_msgs::PositionTarget::IGNORE_PZ |
                                      mavros_msgs::PositionTarget::IGNORE_AFX |
                                      mavros_msgs::PositionTarget::IGNORE_AFY |
@@ -754,8 +748,8 @@ int ControlNode::run() {
                     float kpz = 1.0;
 
                     // Define controls on position
-                    vel.x = -kpx * (_xc - _x0);
-                    vel.y = -kpy * (_yc - _y0);
+                    vel.x = -kpx * (_xc - _landing_e);
+                    vel.y = -kpy * (_yc - _landing_n);
                     vel.z = -kpz * (_zc - _flight_alt);
 
                     // Saturate velocities

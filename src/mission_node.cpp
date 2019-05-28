@@ -80,6 +80,11 @@ private:
 	float _landing_e = 0.0f;
 	float _landing_n = 0.0f;
 
+        // Position
+        float _xc;
+        float _yc;
+        float _zc;
+
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
@@ -88,7 +93,7 @@ private:
 	ros::Subscriber _battery_sub;		// the current battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
 
-	// TODO: add subscribers here
+        // TODO: add subscribers here
 
 	//service
 	ros::ServiceClient _landing_loc_client;
@@ -156,6 +161,7 @@ MissionNode::MissionNode() {
 	_sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &MissionNode::sensorMeasCallback, this);
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
         _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
+        _mission_state_sub = _nh.subscribe<aa241x_mission::MissionState>("mission_state", 10, &MissionNode::missionStateCallback, this);
 
 	// service
 	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
@@ -183,6 +189,10 @@ void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 	_current_local_pos.pose.position.x += _e_offset;
 	_current_local_pos.pose.position.y += _n_offset;
 	_current_local_pos.pose.position.z += _u_offset;
+
+        _xc = _current_local_pos.pose.position.x;
+        _yc = _current_local_pos.pose.position.y;
+        _zc = _current_local_pos.pose.position.z;
 }
 
 
@@ -252,29 +262,21 @@ int MissionNode::run() {
             float y0;
             float z0;
 
-            float xc = _current_local_pos.pose.position.x;
-            float yc = _current_local_pos.pose.position.y;
-            float zc = _current_local_pos.pose.position.z;
-            float qx = _current_local_pos.pose.orientation.x;
-            float qy = _current_local_pos.pose.orientation.y;
-            float qz = _current_local_pos.pose.orientation.z;
-            float qw = _current_local_pos.pose.orientation.w;
-
             // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
-                x0 = xc;
-                y0 = yc;
-                z0 = zc;
+                x0 = _xc;
+                y0 = _yc;
+                z0 = _zc;
 
             }
 
             // Set flight parameters
-            _flight_alt = 50.0;
+            _flight_alt = 50.0; // above lake center ground level
 
             // State machine
             if     (_STATE == TAKEOFF) {
                 // Check if we are close enough to finishing takeoff
-                if(abs(zc - _flight_alt) < 0.1) {
+                if(abs(_zc - _flight_alt) < 1.0) {
                     _STATE = Perimeter_Search;
                 }
 
@@ -288,9 +290,9 @@ int MissionNode::run() {
             }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
-                if(abs(xc - x0) <= 0.1 && abs(yc - y0) <= 0.1) {
+                if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
                     _STATE = LAND;
-                    _flight_alt = 0.0;
+                    _flight_alt = _u_offset;
                 }
 
             }

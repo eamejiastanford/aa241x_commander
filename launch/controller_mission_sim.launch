@@ -6,7 +6,8 @@
 	<!-- 	appropriate ros bags -->
 
 	<!-- launch file argument to be able to set this without having to constantly edit the launch file -->
-	<arg name="mission_index" default="1" doc="index of the desired mission to run" />
+	<arg name="mission_index" value="1" doc="index of the desired mission to run" />
+
 
 	<!-- mavros to the pixhawk -->
 	<include file="$(find aa241x_mission)/launch/mavros_gazebo.launch" >
@@ -15,6 +16,8 @@
 	<!-- AA241x elements to the mission (the people, the scoring, all the fun stuff) -->
 	<include file="$(find aa241x_mission)/launch/aa241x_mission.launch" >
 		<arg name="mission_index" value="$(arg mission_index)" />
+		<arg name="landing_lat" value="37.423767" />
+		<arg name="landing_lon" value="-122.177559" />
 	</include>
 
 	<!-- the control node -->
