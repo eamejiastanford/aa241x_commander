@@ -25,7 +25,8 @@
 #include <bits/stdc++.h>
 #include <vector>
 #include <algorithm>
-#include <fstream>
+#include <time.h>
+
 using namespace std;
 
 // Define states
@@ -36,6 +37,7 @@ const std::string LINE2 = "LINE2";
 const std::string LINE3 = "LINE3";
 const std::string GOHOME = "GOHOME";
 const std::string LAND = "LAND";
+const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 
@@ -281,6 +283,8 @@ int MissionNode::run() {
             float x0;
             float y0;
             float z0;
+            bool new_beacon_found = false;
+
 
             for( int index = 0; index < _id.size(); ++index) {
             int id_current = _id.at(index);
@@ -293,7 +297,7 @@ int MissionNode::run() {
                 _e_total.at(*i).push_back(_e.at(index));
 
             } else {
-
+                new_beacon_found = true;
                 _id_total.push_back(id_current);
                 vector<float> n_current;
                 n_current.push_back(_n.at(index));
@@ -326,10 +330,20 @@ int MissionNode::run() {
             }
             else if(_STATE == Perimeter_Search) {
                 // Check if we have completed enough cycles
+                if(new_beacon_found) {
+                        _STATE = LOITER;
+                        time_t start = time(0);
+                }
                 if(_n_cycles == 1) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
                 }
 
+            }
+            else if(_STATE == LOITER) {
+                    double seconds_since_start = difftime( time(0), start);
+                    if (seconds_since_start > 10) {
+                        _STATE = Perimeter_Search;
+                    }
             }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location

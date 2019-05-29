@@ -28,6 +28,7 @@ const std::string TAKEOFF = "TAKEOFF";
 const std::string LINE = "LINE";
 const std::string GOHOME = "GOHOME";
 const std::string LAND = "LAND";
+const std::string LOITER = "LOITER";
 const std::string DROP_ALT = "DROP_ALT";
 const std::string Perimeter_Search = "Perimeter_Search";
 
@@ -777,6 +778,41 @@ int ControlNode::run() {
                     vel.x = 0.0; // Don't translate laterally
                     vel.y = 0.0; // Don't translate laterally
                     vel.z = -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+
+
+                    // Saturate velocities
+                    if (abs(vel.x) > _vxMax) {
+                        vel.x = sign(vel.x) * _vxMax; // saturate vx
+                    }
+                    if (abs(vel.y) > _vyMax) {
+                        vel.y = sign(vel.y) * _vyMax; // saturate vy
+                    }
+                    if (abs(vel.z) > _vzMax) {
+                        vel.z = sign(vel.z) * _vzMax; // saturate vz
+                    }
+
+                    // publish the command
+                    cmd.header.stamp = ros::Time::now();
+                    cmd.position = pos;
+                    cmd.velocity = vel;
+                    cmd.yaw = _yaw;
+
+                    }
+                else if( _STATE == LOITER){
+                    cmd.type_mask = (mavros_msgs::PositionTarget::IGNORE_PX |
+                                     mavros_msgs::PositionTarget::IGNORE_PY |
+                                     mavros_msgs::PositionTarget::IGNORE_PZ |
+                                     mavros_msgs::PositionTarget::IGNORE_AFX |
+                                     mavros_msgs::PositionTarget::IGNORE_AFY |
+                                     mavros_msgs::PositionTarget::IGNORE_AFZ |
+                                     mavros_msgs::PositionTarget::IGNORE_YAW_RATE);
+
+                    float kpz = 1.0;
+
+                    // Commnad velocities to control position
+                    vel.x = 0.0; // Don't translate laterally
+                    vel.y = 0.0; // Don't translate laterally
+                    vel.z = 0.0; // Don't translate vertically
 
 
                     // Saturate velocities
