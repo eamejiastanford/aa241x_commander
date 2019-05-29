@@ -308,6 +308,7 @@ int MissionNode::run() {
 
             }
             }
+            time_t start;
 
             // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
@@ -332,7 +333,7 @@ int MissionNode::run() {
                 // Check if we have completed enough cycles
                 if(new_beacon_found) {
                         _STATE = LOITER;
-                        time_t start = time(0);
+                        start = time(0);
                 }
                 if(_n_cycles == 1) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
