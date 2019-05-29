@@ -22,6 +22,11 @@
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/Int64.h>
+#include <bits/stdc++.h>
+#include <vector>
+#include <algorithm>
+#include <fstream>
+using namespace std;
 
 // Define states
 const std::string NOTOFFBOARD = "NOTOFFBOARD";
@@ -70,6 +75,16 @@ private:
         std_msgs::String _droneState_msg;
         aa241x_mission::SensorMeasurement _beacon_msg;
         std_msgs::Float64 _flight_alt_msg;
+
+        // Beacon current information
+        std::vector<int> _id;
+        std::vector<float> _n;
+        std::vector<float> _e;
+
+        // Beacon total information
+        std::vector<int> _id_total;
+        vector<vector<float>> _n_total;
+        vector<vector<float>> _e_total;
 
 	// offset information
 	float _e_offset = 0.0f;
@@ -197,7 +212,12 @@ void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 
 
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
-	// TODO: use the information from the measurement as desired
+    // TODO: use the information from the measurement as desired
+    // NOTE: this callback is for an example of how to setup a callback, you may
+    // want to move this information to a mission handling node
+    _id = msg->id;
+    _n = msg->n;
+    _e = msg->e;
 }
 
 
@@ -261,6 +281,29 @@ int MissionNode::run() {
             float x0;
             float y0;
             float z0;
+
+            for( int index = 0; index < _id.size(); ++index) {
+            int id_current = _id.at(index);
+
+            std::vector<int>::iterator i;
+            i = find(_id_total.begin(), _id_total.end(), id_current);
+            if(i != _id_total.end() ) {
+
+                _n_total.at(*i).push_back(_n.at(index));
+                _e_total.at(*i).push_back(_e.at(index));
+
+            } else {
+
+                _id_total.push_back(id_current);
+                vector<float> n_current;
+                n_current.push_back(_n.at(index));
+                _n_total.push_back(n_current);
+                vector<float> e_current;
+                e_current.push_back(_e.at(index));
+                _e_total.push_back(e_current);
+
+            }
+            }
 
             // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
