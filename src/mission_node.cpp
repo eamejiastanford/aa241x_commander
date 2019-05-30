@@ -70,6 +70,7 @@ private:
         std_msgs::String _droneState_msg;
         aa241x_mission::SensorMeasurement _beacon_msg;
         std_msgs::Float64 _flight_alt_msg;
+        std_msgs::Float64 _dAlongLine_msg;
 
 	// offset information
 	float _e_offset = 0.0f;
@@ -85,6 +86,9 @@ private:
         float _yc;
         float _zc;
 
+        // Extra data for state machine
+        float _dAlongLine;
+
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
@@ -92,6 +96,7 @@ private:
         ros::Subscriber _mission_state_sub;     // mission state
 	ros::Subscriber _battery_sub;		// the current battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
+        ros::Subsriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
 
         // TODO: add subscribers here
 
@@ -142,6 +147,8 @@ private:
 	 */
 	void batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg);
 
+    void dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg);
+
         void nCyclesCallback(const std_msgs::Int64::ConstPtr& msg);
 
         void waitForFCUConnection();
@@ -170,6 +177,12 @@ MissionNode::MissionNode() {
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
         _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
         _flight_alt_pub = _nh.advertise<std_msgs::Float64>("flight_alt", 10);
+}
+
+void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
+
+    _dAlongLine = *msg;
+
 }
 
 
@@ -277,7 +290,8 @@ int MissionNode::run() {
             if     (_STATE == TAKEOFF) {
                 // Check if we are close enough to finishing takeoff
                 if(abs(_zc - _flight_alt) < 1.0) {
-                    _STATE = Perimeter_Search;
+                    //_STATE = Perimeter_Search;
+                    _STATE = LINE;
                 }
 
             }
@@ -295,6 +309,13 @@ int MissionNode::run() {
                     _flight_alt = _u_offset;
                 }
 
+            }
+            else if(_STATE == LINE) {
+                // Check if we've travelled enough along the line
+                if (abs(_dAlongLine) >= 260.0){
+                        //_STATE = LINE2;
+                        _STATE = GOHOME;
+                     }
             }
 
             // Publish flight data
