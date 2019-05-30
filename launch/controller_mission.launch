@@ -1,0 +1,27 @@
+<launch>
+	<!-- this launch file will start the controller node with mavros to the pixhawk for an actual flying scenario -->
+	<!-- will start the following: -->
+	<!-- 	mavros to the pixhawk -->
+	<!--	control node -->
+	<!-- 	appropriate ros bags -->
+
+	<!-- launch file argument to be able to set this without having to constantly edit the launch file -->
+	<arg name="mission_index" default="1" doc="index of the desired mission to run" />
+
+	<!-- mavros to the pixhawk -->
+	<include file="$(find aa241x_mission)/launch/mavros_pixhawk.launch" >
+	</include>
+
+	<!-- AA241x elements to the mission (the people, the scoring, all the fun stuff) -->
+	<include file="$(find aa241x_mission)/launch/aa241x_mission.launch" >
+		<arg name="mission_index" value="$(arg mission_index)" />
+	</include>
+
+	<!-- the control node -->
+	<node pkg="aa241x_commander" type="control_node" name="control_node" output="screen">
+    </node>
+
+	<!-- logging -->
+	<include file="$(find aa241x_commander)/launch/log_position.launch" />
+
+</launch>
