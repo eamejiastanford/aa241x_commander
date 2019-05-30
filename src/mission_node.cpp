@@ -41,6 +41,21 @@ const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 
+class Timer
+{
+public:
+    Timer() : beg_(clock_::now()) {}
+    void reset() { beg_ = clock_::now(); }
+    double elapsed() const {
+        return std::chrono::duration_cast<second_>
+            (clock_::now() - beg_).count(); }
+
+private:
+    typedef std::chrono::high_resolution_clock clock_;
+    typedef std::chrono::duration<double, std::ratio<1> > second_;
+    std::chrono::time_point<clock_> beg_;
+};
+
 /**
  * class to contain the functionality of the mission node.
  */
@@ -77,6 +92,9 @@ private:
         std_msgs::String _droneState_msg;
         aa241x_mission::SensorMeasurement _beacon_msg;
         std_msgs::Float64 _flight_alt_msg;
+        std_msgs::Float64 _n_values_msg;
+        std_msgs::Float64 _e_values_msg;
+        std_msgs::Int64 _id_values_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -102,6 +120,9 @@ private:
         float _yc;
         float _zc;
 
+        time_t _start;
+        time_t _end;
+
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
@@ -119,6 +140,9 @@ private:
         ros::Publisher _droneState_pub;         // the current state of the drone
         ros::Publisher _beaconState_pub;        // the current state of the beacon information
         ros::Publisher _flight_alt_pub;         // the targeted flight altitude of the mission
+        ros::Publisher _id_values_pub;
+        ros::Publisher _e_values_pub;
+        ros::Publisher _n_values_pub;
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -187,6 +211,9 @@ MissionNode::MissionNode() {
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
         _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
         _flight_alt_pub = _nh.advertise<std_msgs::Float64>("flight_alt", 10);
+        _e_values_pub = _nh.advertise<std_msgs::Float64>("e_value", 10);
+        _n_values_pub = _nh.advertise<std_msgs::Float64>("n_value", 10);
+        _id_values_pub = _nh.advertise<std_msgs::Int64>("id_value", 10);
 }
 
 
@@ -275,7 +302,8 @@ int MissionNode::run() {
         }
 
 	// set the loop rate in [Hz]
-	ros::Rate rate(10.0);
+        ros::Rate rate(10.0);
+
 
 	// main loop
 	while (ros::ok()) {
@@ -285,30 +313,54 @@ int MissionNode::run() {
             float z0;
             bool new_beacon_found = false;
 
-
+            // Loop through id's found (from mission node)
             for( int index = 0; index < _id.size(); ++index) {
-            int id_current = _id.at(index);
 
-            std::vector<int>::iterator i;
-            i = find(_id_total.begin(), _id_total.end(), id_current);
-            if(i != _id_total.end() ) {
+                // Pull the current id to check
+                int id_current = _id.at(index);
 
-                _n_total.at(*i).push_back(_n.at(index));
-                _e_total.at(*i).push_back(_e.at(index));
+                // Loop through known id's to find a match
+                int iMatch = _id_total.size();
+                for(int i = 0; i < _id_total.size(); i++) {
+                    if(_id_total[i] == id_current) {
+                        iMatch = i;
+                    }
+                }
+                _id_values_msg.data = id_current;
+                _id_values_pub.publish(_id_values_msg);
 
-            } else {
-                new_beacon_found = true;
-                _id_total.push_back(id_current);
-                vector<float> n_current;
-                n_current.push_back(_n.at(index));
-                _n_total.push_back(n_current);
-                vector<float> e_current;
-                e_current.push_back(_e.at(index));
-                _e_total.push_back(e_current);
 
+                // Check if we've already seen this ID (beacon)
+                if(iMatch != _id_total.size() ) {
+                    int jMatch = _n_total[iMatch].size();
+                    for(int i = 0; i < _n_total[iMatch].size(); i++) {
+                        if(abs(_n_total[iMatch][i] - _n[index]) <= 1e-7) {
+                            jMatch = i;
+                        }
+                    }
+                    // Append reading to list of measurements for this beacon
+                    if(jMatch == _n_total[iMatch].size()) {
+                        _n_total[iMatch].push_back(_n[index]);
+                        _e_total[iMatch].push_back(_e[index]);
+                        _n_values_msg.data =_n[index];
+                        _e_values_msg.data =_e[index];
+                        _n_values_pub.publish(_n_values_msg);
+                        _e_values_pub.publish(_e_values_msg);
+                    }
+
+                } else {
+                    // Add beacon to list of found beacons with first measurement
+                    new_beacon_found = true;
+                    _id_total.push_back(id_current);
+                    vector<float> n_current;
+                    n_current.push_back(_n[index]);
+                    _n_total.push_back(n_current);
+                    vector<float> e_current;
+                    e_current.push_back(_e[index]);
+                    _e_total.push_back(e_current);
+
+                }
             }
-            }
-            time_t start;
 
             // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
@@ -332,19 +384,19 @@ int MissionNode::run() {
             else if(_STATE == Perimeter_Search) {
                 // Check if we have completed enough cycles
                 if(new_beacon_found) {
-                        _STATE = LOITER;
-                        start = time(0);
+                    _start = time(0);
+                    _STATE = LOITER;
                 }
-                if(_n_cycles == 1) {//static_cast<int>(radius/radius_search)){ // completed two rotations
+                else if(_n_cycles == 6) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
                 }
 
             }
             else if(_STATE == LOITER) {
-                    double seconds_since_start = difftime( time(0), start);
-                    if (seconds_since_start > 10) {
-                        _STATE = Perimeter_Search;
-                    }
+                _end = time(NULL);
+                if (_end - _start >= 5.0) {
+                    _STATE = Perimeter_Search;
+                }
             }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
