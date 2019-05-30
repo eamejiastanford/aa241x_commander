@@ -90,11 +90,11 @@ private:
 	sensor_msgs::BatteryState _battery_state;
 
         std_msgs::String _droneState_msg;
-        aa241x_mission::SensorMeasurement _beacon_msg;
         std_msgs::Float64 _flight_alt_msg;
         std_msgs::Float64 _n_values_msg;
         std_msgs::Float64 _e_values_msg;
         std_msgs::Int64 _id_values_msg;
+        aa241x_mission::PersonEstimate _person_found_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -138,11 +138,11 @@ private:
 
 	// publishers
         ros::Publisher _droneState_pub;         // the current state of the drone
-        ros::Publisher _beaconState_pub;        // the current state of the beacon information
         ros::Publisher _flight_alt_pub;         // the targeted flight altitude of the mission
         ros::Publisher _id_values_pub;
         ros::Publisher _e_values_pub;
         ros::Publisher _n_values_pub;
+        ros::Publisher _person_found_pub;
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -209,11 +209,11 @@ MissionNode::MissionNode() {
 
 	// advertise the published detailed
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
-        _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
         _flight_alt_pub = _nh.advertise<std_msgs::Float64>("flight_alt", 10);
         _e_values_pub = _nh.advertise<std_msgs::Float64>("e_value", 10);
         _n_values_pub = _nh.advertise<std_msgs::Float64>("n_value", 10);
         _id_values_pub = _nh.advertise<std_msgs::Int64>("id_value", 10);
+        _person_found_pub = _nh.advertise<aa241x_mission::PersonEstimate>("person_found", 10);
 }
 
 
@@ -403,9 +403,28 @@ int MissionNode::run() {
                 if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
                     _STATE = LAND;
                     _flight_alt = _u_offset;
+                    for( int index = 0; index < _id_total.size(); ++index) {
+                        // Pull the current id to check
+                        int id_current = _id_total[index];
+                        vector<float> n_current = _n_total[index];
+                        vector<float> e_current = _e_total[index];
+                        float n_total = 0.0;
+                        float e_total = 0.0;
+                        for(int i=0; i<n_current.size(); ++i) {
+                                n_total += n_current[i];
+                                e_total += e_current[i];
+                        }
+                        float n_avg = n_total/n_current.size();
+                        float e_avg = e_total/e_current.size();
+                        _person_found_msg.header = ros::Time::now();
+                        _person_found_msg.id = id_current;
+                        _person_found_msg.n = n_avg;
+                        _person_found_msg.e = e_avg;
+                        _person_found_pub.publish(_person_found_msg);
+                     }
                 }
-
             }
+            
 
             // Publish flight data
             _flight_alt_msg.data = _flight_alt;
