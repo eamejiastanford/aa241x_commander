@@ -96,7 +96,7 @@ private:
         ros::Subscriber _mission_state_sub;     // mission state
 	ros::Subscriber _battery_sub;		// the current battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
-        ros::Subsriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
+        ros::Subscriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
 
         // TODO: add subscribers here
 
@@ -169,6 +169,7 @@ MissionNode::MissionNode() {
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
         _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
         _mission_state_sub = _nh.subscribe<aa241x_mission::MissionState>("mission_state", 10, &MissionNode::missionStateCallback, this);
+        _dAlongLine_sub = _nh.subscribe<std_msgs::Float64>("dAlongLine", 10, &MissionNode::dAlongLineCallback, this);
 
 	// service
 	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
@@ -181,7 +182,9 @@ MissionNode::MissionNode() {
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
 
-    _dAlongLine = *msg;
+    _dAlongLine_msg = *msg;
+
+    _dAlongLine = _dAlongLine_msg.data;
 
 }
 
@@ -284,7 +287,7 @@ int MissionNode::run() {
             }
 
             // Set flight parameters
-            _flight_alt = 50.0; // above lake center ground level
+            _flight_alt = 20.0; // above lake center ground level
 
             // State machine
             if     (_STATE == TAKEOFF) {
@@ -305,14 +308,14 @@ int MissionNode::run() {
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
                 if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
-                    _STATE = LAND;
-                    _flight_alt = _u_offset;
+                    //_STATE = LAND;
+                    //_flight_alt = _u_offset;
                 }
 
             }
             else if(_STATE == LINE) {
                 // Check if we've travelled enough along the line
-                if (abs(_dAlongLine) >= 260.0){
+                if (abs(_dAlongLine) >= 130.0){
                         //_STATE = LINE2;
                         _STATE = GOHOME;
                      }

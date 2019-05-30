@@ -16,8 +16,8 @@
 	<!-- AA241x elements to the mission (the people, the scoring, all the fun stuff) -->
 	<include file="$(find aa241x_mission)/launch/aa241x_mission.launch" >
 		<arg name="mission_index" value="$(arg mission_index)" />
-		<arg name="landing_lat" value="37.423767" />
-		<arg name="landing_lon" value="-122.177559" />
+		<arg name="landing_lat" value="37.422748" />
+		<arg name="landing_lon" value="-122.174234" />
 	</include>
 
 	<!-- the control node -->

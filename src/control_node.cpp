@@ -115,9 +115,9 @@ private:
         float _current_lon = 0.0f;
 
         // actuator saturation
-        float _vxMax = 5.0f;
-        float _vyMax = 5.0f;
-        float _vzMax = 5.0f;
+        float _vxMax = 2.0f;
+        float _vyMax = 2.0f;
+        float _vzMax = 1.0f;
         float _vzTakeoff = 5.0f;
 
         // subscribers
@@ -826,19 +826,17 @@ int main(int argc, char **argv) {
         ros::NodeHandle private_nh("~");
         // TODO: determine settings
 
-
-        float alt_desired = 20.0;
         // Line to follow:
-        float thetaLine_desired = 30.0*M_PI/180.0;
-        float x0 = -50.0;
-        float y0 = -10.0;
+        float thetaLine_desired = 225.0*M_PI/180.0;
+        float x0 = 50.0;
+        float y0 = 50.0;
 
 
         // Desired forward speed
         float vDes = 2.0f;
 
         // create the node
-        ControlNode node(thetaLine_desired, xLine, yLine, vDes);
+        ControlNode node(thetaLine_desired, x0, y0, vDes);
 
         // run the node
         return node.run();
