@@ -37,10 +37,16 @@ const std::string LINE = "LINE";
 const std::string LINE2 = "LINE2";
 const std::string LINE3 = "LINE3";
 const std::string GOHOME = "GOHOME";
+const std::string DROP_ALT = "DROP_ALT";
 const std::string LAND = "LAND";
 const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
+
+// Define possible missions
+const std::string SPIRAL = "SPIRAL";
+const std::string LINEANDHOME = "LINEANDHOME";
+const std::string OUTERPERIM = "OUTERPERIM";
 
 /**
  * class to contain the functionality of the mission node.
@@ -52,7 +58,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-	MissionNode();
+        MissionNode(std::string mission_type);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -65,6 +71,8 @@ private:
 
 	// node handler
 	ros::NodeHandle _nh;
+
+        std::string _MISSIONTYPE;
 
         std::string _STATE;
         float _flight_alt;
@@ -185,7 +193,7 @@ private:
 };
 
 
-MissionNode::MissionNode() {
+MissionNode::MissionNode(std::string mission_type) : _MISSIONTYPE(mission_type) {
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -231,7 +239,7 @@ void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 	// information into the Lake Lag frame
 	_current_local_pos.pose.position.x += _e_offset;
 	_current_local_pos.pose.position.y += _n_offset;
-	_current_local_pos.pose.position.z += _u_offset;
+        _current_local_pos.pose.position.z -= _u_offset;
 
         _xc = _current_local_pos.pose.position.x;
         _yc = _current_local_pos.pose.position.y;
@@ -302,9 +310,18 @@ int MissionNode::run() {
 	// set the loop rate in [Hz]
         ros::Rate rate(10.0);
 
+        int _n_cycles_target;
+
+        if (_MISSIONTYPE == SPIRAL) {
+            _n_cycles_target = 6;
+        }
+        else if (_MISSIONTYPE == OUTERPERIM) {
+            _n_cycles_target = 1;
+        }
 
 	// main loop
 	while (ros::ok()) {
+
 
             float x0;
             float y0;
@@ -375,10 +392,13 @@ int MissionNode::run() {
             if     (_STATE == TAKEOFF) {
                 // Check if we are close enough to finishing takeoff
                 if(abs(_zc - _flight_alt) < 1.0) {
-                    //_STATE = Perimeter_Search;
-                    _STATE = LINE;
+                    if (_MISSIONTYPE == LINEANDHOME) {
+                        _STATE = LINE;
+                    }
+                    else {
+                        _STATE = Perimeter_Search;
+                    }
                 }
-
             }
             else if(_STATE == Perimeter_Search) {
                 // Check if we have completed enough cycles
@@ -386,7 +406,7 @@ int MissionNode::run() {
                     _start = time(0);
                     _STATE = LOITER;
                 }
-                else if(_n_cycles == 6) {//static_cast<int>(radius/radius_search)){ // completed two rotations
+                else if(_n_cycles == _n_cycles_target) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
                 }
 
@@ -400,8 +420,8 @@ int MissionNode::run() {
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
                 if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
-                    _STATE = LAND;
-                    _flight_alt = _u_offset;
+                    _STATE = DROP_ALT;
+
                     for( int index = 0; index < _id_total.size(); ++index) {
                         // Pull the current id to check
                         int id_current = _id_total[index];
@@ -423,10 +443,15 @@ int MissionNode::run() {
                      }
                 }
             }
+            else if (_STATE == DROP_ALT){
+                // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
+                if (abs(_zc - (3.0-_u_offset)) < 0.1 ){
+                    _STATE = LAND;
+                }
+            }
             else if(_STATE == LINE) {
                 // Check if we've travelled enough along the line
-                if (abs(_dAlongLine) >= 130.0){
-                        //_STATE = LINE2;
+                if (abs(_dAlongLine) >= 30.0){
                         _STATE = GOHOME;
                      }
             }
@@ -458,10 +483,11 @@ int main(int argc, char **argv) {
 	// get parameters from the launch file which define some mission
 	// settings
 	ros::NodeHandle private_nh("~");
-	// TODO: determine settings
+        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL
+        std::string mission_type = OUTERPERIM;
 
 	// create the node
-	MissionNode node;
+        MissionNode node(mission_type);
 
 	// run the node
 	return node.run();

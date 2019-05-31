@@ -249,7 +249,7 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // Add the offsets to switch to lake lag (centered) frame
         _current_local_pos.pose.position.x += _e_offset;
         _current_local_pos.pose.position.y += _n_offset;
-        _current_local_pos.pose.position.z += _u_offset;
+        _current_local_pos.pose.position.z -= _u_offset;
 
         // Get the position
         _xc = _current_local_pos.pose.position.x; // N
@@ -480,7 +480,7 @@ int ControlNode::run() {
 
                     float kpz = 1.0;
 
-                    if (_zc<=2.5){
+                    if (_zc <= (2.5-_u_offset)){ // need to account for _u_offset here..
                         // Commnad velocities to control position
                         vel.x = 0.0; // Don't translate laterally
                         vel.y = 0.0; // Don't translate laterally
@@ -632,9 +632,7 @@ int ControlNode::run() {
                         cycle = cycle + 1;
                         _n_cycles_msg.data = cycle;
                         _n_cycles_pub.publish(_n_cycles_msg);
-
                     }
-
                 }
                 else if(_STATE == LINE) {
 
@@ -667,7 +665,7 @@ int ControlNode::run() {
                     // Set the yaw angle and the position
                     //cmd.yaw = _thetaLine - M_PI/2.0; // yaw in Pixhawk measured CCW from EAST
                     cmd.yaw = atan2(vel.y,vel.x);
-                    pos.z = _flight_alt;
+                    pos.z = _flight_alt+_u_offset;
 
                     // Assign the command to the command message
                     cmd.header.stamp = ros::Time::now();
@@ -752,7 +750,7 @@ int ControlNode::run() {
 
                     float kpz = 1.0;
 
-                    // Commnad velocities to control position
+                    // Command velocities to control position
                     vel.x = 0.0; // Don't translate laterally
                     vel.y = 0.0; // Don't translate laterally
                     vel.z = -kpz * (_zc - _z0);
@@ -765,8 +763,9 @@ int ControlNode::run() {
                     if (abs(vel.y) > _vyMax) {
                         vel.y = sign(vel.y) * _vyMax; // saturate vy
                     }
-                    if (abs(vel.z) > _vzMax) {
-                        vel.z = sign(vel.z) * _vzMax; // saturate vz
+                    // Slowing down the z-direction velocity for the last 5 meter drop
+                    if (abs(vel.z) > _vzMax/4.0) {
+                        vel.z = sign(vel.z) * _vzMax/4.0; // saturate vz
                     }
 
                     // publish the command
@@ -789,7 +788,7 @@ int ControlNode::run() {
                     // Commnad velocities to control position
                     vel.x = 0.0; // Don't translate laterally
                     vel.y = 0.0; // Don't translate laterally
-                    vel.z = -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+                    vel.z  = -kpz * (_zc - (3.0-_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
 
                     // Saturate velocities
