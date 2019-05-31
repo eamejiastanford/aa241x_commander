@@ -70,7 +70,7 @@ private:
         geometry_msgs::PoseStamped _current_local_pos;
         aa241x_mission::SensorMeasurement _current_sensor_meas;
         std::string _STATE;
-        float _flight_alt;
+        float _flight_alt = 0;
 
         // landing position
         float _landing_e = 0.0f;
@@ -109,9 +109,9 @@ private:
         std::vector<float> _e;
 
         // offset information
-        float _e_offset;
-        float _n_offset;
-        float _u_offset;
+        float _e_offset = 0;
+        float _n_offset = 0;
+        float _u_offset = 0;
         float _current_lat = 0.0f;
         float _current_lon = 0.0f;
 
@@ -119,7 +119,7 @@ private:
         float _vxMax = 2.0f;
         float _vyMax = 2.0f;
         float _vzMax = 1.0f;
-        float _vzTakeoff = 5.0f;
+        float _vzTakeoff = 3.0f;
 
         // subscribers
         ros::Subscriber _state_sub;                 // the current state of the pixhawk
@@ -725,7 +725,19 @@ int ControlNode::run() {
                     cmd.header.stamp = ros::Time::now();
                     cmd.position = pos;
                     cmd.velocity = vel;
-                    cmd.yaw = atan2(vel.y,vel.x);
+
+                    // Compute distance to home
+                    float xDistSq = pow((_xc - _landing_e),2);
+                    float yDistSq = pow((_yc - _landing_n),2);
+                    float distToHome = sqrt(xDistSq + yDistSq);
+
+                    // Check if we should continue to command yaw
+                    if( distToHome < 1.0) {
+                        cmd.yaw = _yaw;
+                    }
+                    else {
+                        cmd.yaw = atan2(vel.y,vel.x);
+                    }
 
 
                 }
