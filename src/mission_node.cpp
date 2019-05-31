@@ -18,10 +18,17 @@
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
 #include <aa241x_mission/RequestLandingPosition.h>
+#include <aa241x_mission/PersonEstimate.h>
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/Int64.h>
+#include <bits/stdc++.h>
+#include <vector>
+#include <algorithm>
+#include <time.h>
+
+using namespace std;
 
 // Define states
 const std::string NOTOFFBOARD = "NOTOFFBOARD";
@@ -31,6 +38,7 @@ const std::string LINE2 = "LINE2";
 const std::string LINE3 = "LINE3";
 const std::string GOHOME = "GOHOME";
 const std::string LAND = "LAND";
+const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 
@@ -68,9 +76,22 @@ private:
 	sensor_msgs::BatteryState _battery_state;
 
         std_msgs::String _droneState_msg;
-        aa241x_mission::SensorMeasurement _beacon_msg;
         std_msgs::Float64 _flight_alt_msg;
         std_msgs::Float64 _dAlongLine_msg;
+        std_msgs::Float64 _n_values_msg;
+        std_msgs::Float64 _e_values_msg;
+        std_msgs::Int64 _id_values_msg;
+        aa241x_mission::PersonEstimate _person_found_msg;
+
+        // Beacon current information
+        std::vector<int> _id;
+        std::vector<float> _n;
+        std::vector<float> _e;
+
+        // Beacon total information
+        std::vector<int> _id_total;
+        vector<vector<float>> _n_total;
+        vector<vector<float>> _e_total;
 
 	// offset information
 	float _e_offset = 0.0f;
@@ -88,6 +109,8 @@ private:
 
         // Extra data for state machine
         float _dAlongLine;
+        time_t _start;
+        time_t _end;
 
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
@@ -105,8 +128,11 @@ private:
 
 	// publishers
         ros::Publisher _droneState_pub;         // the current state of the drone
-        ros::Publisher _beaconState_pub;        // the current state of the beacon information
         ros::Publisher _flight_alt_pub;         // the targeted flight altitude of the mission
+        ros::Publisher _id_values_pub;
+        ros::Publisher _e_values_pub;
+        ros::Publisher _n_values_pub;
+        ros::Publisher _person_found_pub;
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -176,8 +202,11 @@ MissionNode::MissionNode() {
 
 	// advertise the published detailed
         _droneState_pub = _nh.advertise<std_msgs::String>("drone_state", 10);
-        _beaconState_pub = _nh.advertise<aa241x_mission::SensorMeasurement>("beacon_state", 10);
         _flight_alt_pub = _nh.advertise<std_msgs::Float64>("flight_alt", 10);
+        _e_values_pub = _nh.advertise<std_msgs::Float64>("e_value", 10);
+        _n_values_pub = _nh.advertise<std_msgs::Float64>("n_value", 10);
+        _id_values_pub = _nh.advertise<std_msgs::Int64>("id_value", 10);
+        _person_found_pub = _nh.advertise<aa241x_mission::PersonEstimate>("person_found", 10);
 }
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
@@ -213,7 +242,12 @@ void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
 
 
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
-	// TODO: use the information from the measurement as desired
+    // TODO: use the information from the measurement as desired
+    // NOTE: this callback is for an example of how to setup a callback, you may
+    // want to move this information to a mission handling node
+    _id = msg->id;
+    _n = msg->n;
+    _e = msg->e;
 }
 
 
@@ -269,7 +303,8 @@ int MissionNode::run() {
         }
 
 	// set the loop rate in [Hz]
-	ros::Rate rate(10.0);
+        ros::Rate rate(10.0);
+
 
 	// main loop
 	while (ros::ok()) {
@@ -277,6 +312,56 @@ int MissionNode::run() {
             float x0;
             float y0;
             float z0;
+            bool new_beacon_found = false;
+
+            // Loop through id's found (from mission node)
+            for( int index = 0; index < _id.size(); ++index) {
+
+                // Pull the current id to check
+                int id_current = _id.at(index);
+
+                // Loop through known id's to find a match
+                int iMatch = _id_total.size();
+                for(int i = 0; i < _id_total.size(); i++) {
+                    if(_id_total[i] == id_current) {
+                        iMatch = i;
+                    }
+                }
+                _id_values_msg.data = id_current;
+                _id_values_pub.publish(_id_values_msg);
+
+
+                // Check if we've already seen this ID (beacon)
+                if(iMatch != _id_total.size() ) {
+                    int jMatch = _n_total[iMatch].size();
+                    for(int i = 0; i < _n_total[iMatch].size(); i++) {
+                        if(abs(_n_total[iMatch][i] - _n[index]) <= 1e-7) {
+                            jMatch = i;
+                        }
+                    }
+                    // Append reading to list of measurements for this beacon
+                    if(jMatch == _n_total[iMatch].size()) {
+                        _n_total[iMatch].push_back(_n[index]);
+                        _e_total[iMatch].push_back(_e[index]);
+                        _n_values_msg.data =_n[index];
+                        _e_values_msg.data =_e[index];
+                        _n_values_pub.publish(_n_values_msg);
+                        _e_values_pub.publish(_e_values_msg);
+                    }
+
+                } else {
+                    // Add beacon to list of found beacons with first measurement
+                    new_beacon_found = true;
+                    _id_total.push_back(id_current);
+                    vector<float> n_current;
+                    n_current.push_back(_n[index]);
+                    _n_total.push_back(n_current);
+                    vector<float> e_current;
+                    e_current.push_back(_e[index]);
+                    _e_total.push_back(e_current);
+
+                }
+            }
 
             // Record the takeoff position
             if (_current_state.mode != "OFFBOARD") {
@@ -300,18 +385,46 @@ int MissionNode::run() {
             }
             else if(_STATE == Perimeter_Search) {
                 // Check if we have completed enough cycles
-                if(_n_cycles == 1) {//static_cast<int>(radius/radius_search)){ // completed two rotations
+                if(new_beacon_found) {
+                    _start = time(0);
+                    _STATE = LOITER;
+                }
+                else if(_n_cycles == 6) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
                 }
 
             }
+            else if(_STATE == LOITER) {
+                _end = time(NULL);
+                if (_end - _start >= 5.0) {
+                    _STATE = Perimeter_Search;
+                }
+            }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
                 if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
-                    //_STATE = LAND;
-                    //_flight_alt = _u_offset;
+                    _STATE = LAND;
+                    _flight_alt = _u_offset;
+                    for( int index = 0; index < _id_total.size(); ++index) {
+                        // Pull the current id to check
+                        int id_current = _id_total[index];
+                        vector<float> n_current = _n_total[index];
+                        vector<float> e_current = _e_total[index];
+                        float n_total = 0.0;
+                        float e_total = 0.0;
+                        for(int i=0; i<n_current.size(); ++i) {
+                                n_total += n_current[i];
+                                e_total += e_current[i];
+                        }
+                        float n_avg = n_total/n_current.size();
+                        float e_avg = e_total/e_current.size();
+                        _person_found_msg.header.stamp = ros::Time::now();
+                        _person_found_msg.id = id_current;
+                        _person_found_msg.n = n_avg;
+                        _person_found_msg.e = e_avg;
+                        _person_found_pub.publish(_person_found_msg);
+                     }
                 }
-
             }
             else if(_STATE == LINE) {
                 // Check if we've travelled enough along the line
@@ -320,6 +433,7 @@ int MissionNode::run() {
                         _STATE = GOHOME;
                      }
             }
+            
 
             // Publish flight data
             _flight_alt_msg.data = _flight_alt;
