@@ -60,7 +60,7 @@ private:
 
         std::string _STATE;
         float _flight_alt;
-        int _n_cycles;
+        int _n_cycles = 0;
 
 	// data
 	mavros_msgs::State _current_state;
@@ -87,14 +87,14 @@ private:
         float _zc;
 
         // Extra data for state machine
-        float _dAlongLine;
+        float _dAlongLine = 0;
 
 	// subscribers
         ros::Subscriber _state_sub;             // the current state of the pixhawk
 	ros::Subscriber _local_pos_sub;		// local position information
 	ros::Subscriber _sensor_meas_sub;	// mission sensor measurement
         ros::Subscriber _mission_state_sub;     // mission state
-	ros::Subscriber _battery_sub;		// the current battery information
+        ros::Subscriber _battery_sub;		// the curre = 0nt battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
         ros::Subscriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
 
@@ -118,7 +118,6 @@ private:
 	 * @param msg mavros state message
 	 */
 	void stateCallback(const mavros_msgs::State::ConstPtr& msg);
-
 	/**
 	 * callback for the local position and orientation computed by the pixhawk.
 	 * @param msg pose stamped message type
@@ -136,7 +135,7 @@ private:
 	/**
 	 * callback for the mission state for the AA241x mission
 	 * this includes the offset information for the lake lag coordinate frame
-	 * @param msg mission state
+         * @param msg mission state = 0
 	 */
         void missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg);
 
@@ -185,7 +184,6 @@ void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
     _dAlongLine_msg = *msg;
 
     _dAlongLine = _dAlongLine_msg.data;
-
 }
 
 
@@ -247,7 +245,6 @@ void MissionNode::waitForFCUConnection() {
                 rate.sleep();
         }
 }
-
 
 int MissionNode::run() {
 
