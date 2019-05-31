@@ -18,6 +18,7 @@
 #include <aa241x_mission/SensorMeasurement.h>
 #include <aa241x_mission/MissionState.h>
 #include <aa241x_mission/RequestLandingPosition.h>
+#include <aa241x_mission/PersonEstimate.h>
 
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
@@ -40,21 +41,6 @@ const std::string LAND = "LAND";
 const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
-
-class Timer
-{
-public:
-    Timer() : beg_(clock_::now()) {}
-    void reset() { beg_ = clock_::now(); }
-    double elapsed() const {
-        return std::chrono::duration_cast<second_>
-            (clock_::now() - beg_).count(); }
-
-private:
-    typedef std::chrono::high_resolution_clock clock_;
-    typedef std::chrono::duration<double, std::ratio<1> > second_;
-    std::chrono::time_point<clock_> beg_;
-};
 
 /**
  * class to contain the functionality of the mission node.
@@ -416,7 +402,7 @@ int MissionNode::run() {
                         }
                         float n_avg = n_total/n_current.size();
                         float e_avg = e_total/e_current.size();
-                        _person_found_msg.header = ros::Time::now();
+                        _person_found_msg.header.stamp = ros::Time::now();
                         _person_found_msg.id = id_current;
                         _person_found_msg.n = n_avg;
                         _person_found_msg.e = e_avg;
