@@ -90,6 +90,7 @@ private:
         std_msgs::Float64 _e_values_msg;
         std_msgs::Int64 _id_values_msg;
         aa241x_mission::PersonEstimate _person_found_msg;
+        std:msgs::Float64 _speed_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -141,6 +142,7 @@ private:
         ros::Publisher _e_values_pub;
         ros::Publisher _n_values_pub;
         ros::Publisher _person_found_pub;
+        ros::Publisher _speed_pub;
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -193,7 +195,7 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type) : _MISSIONTYPE(mission_type) {
+MissionNode::MissionNode(std::string mission_type, float target_v) : _MISSIONTYPE(mission_type), _target_v(target_v) {
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -214,6 +216,7 @@ MissionNode::MissionNode(std::string mission_type) : _MISSIONTYPE(mission_type) 
         _n_values_pub = _nh.advertise<std_msgs::Float64>("n_value", 10);
         _id_values_pub = _nh.advertise<std_msgs::Int64>("id_value", 10);
         _person_found_pub = _nh.advertise<aa241x_mission::PersonEstimate>("person_found", 10);
+        _speed_pub = _nh.advertise<std_msgs::Float64>("speed", 10);
 }
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
@@ -397,6 +400,8 @@ int MissionNode::run() {
                     }
                     else {
                         _STATE = Perimeter_Search;
+                        _speed_msg.data = _target_v;
+                        _speed_pub.publish(_speed_msg);
                     }
                 }
             }
@@ -485,9 +490,10 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL
         std::string mission_type = OUTERPERIM;
+        float target_v = 3.0;
 
 	// create the node
-        MissionNode node(mission_type);
+        MissionNode node(mission_type, target_v);
 
 	// run the node
 	return node.run();

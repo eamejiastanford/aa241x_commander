@@ -116,8 +116,8 @@ private:
         float _current_lon = 0.0f;
 
         // actuator saturation
-        float _vxMax = 2.0f;
-        float _vyMax = 2.0f;
+        float _vxMax;
+        float _vyMax;
         float _vzMax = 1.0f;
         float _vzTakeoff = 3.0f;
 
@@ -130,6 +130,7 @@ private:
         ros::Subscriber _droneState_sub;            // the current state of the drone
         ros::Subscriber _beaconState_sub;           // the current state of the beacon information
         ros::Subscriber _flight_alt_sub;            // the targeted flight altitude of the mission
+        ros::Subscriber _target_v_sub;
 
         // publishers
         ros::Publisher _cmd_pub;
@@ -187,6 +188,8 @@ private:
 
         void flightAltCallback(const std_msgs::Float64::ConstPtr& msg);
 
+        void targetVCallback(const std_msgs::Float64::ConstPtr& msg);
+
         void toEulerAngle(const float q[4]);
         //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
 
@@ -216,6 +219,7 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _beaconState_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("beacon_state", 10, &ControlNode::beaconStateCallback, this);
         _flight_alt_sub = _nh.subscribe<std_msgs::Float64>("flight_alt", 10, &ControlNode::flightAltCallback, this);
         _mission_state_sub = _nh.subscribe<aa241x_mission::MissionState>("mission_state", 10, &ControlNode::missionStateCallback, this);
+        _target_v_sub = _nh.subscribe<std_msgs::Float64>("speed", 10, &ControlNode::targetVCallback, this);
         // advertise the published detailed
 
         // publish a PositionTarget to the `/mavros/setpoint_raw/local` topic which
@@ -314,6 +318,11 @@ void ControlNode::beaconStateCallback(const aa241x_mission::SensorMeasurement::C
 
 void ControlNode::flightAltCallback(const std_msgs::Float64::ConstPtr& msg) {
         _flight_alt = msg->data;
+}
+
+void ControlNode::targetVCallback(const std_msgs::Float64::ConstPtr& msg) {
+        _vyMax = msg->data;
+        _vxMax = msg->data;
 }
 
 
