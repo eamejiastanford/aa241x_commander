@@ -47,6 +47,7 @@ const std::string Perimeter_Search = "Perimeter_Search";
 const std::string SPIRAL = "SPIRAL";
 const std::string LINEANDHOME = "LINEANDHOME";
 const std::string OUTERPERIM = "OUTERPERIM";
+const std::string HOVERTEST = "HOVERTEST";
 
 /**
  * class to contain the functionality of the mission node.
@@ -314,13 +315,21 @@ int MissionNode::run() {
 	// set the loop rate in [Hz]
         ros::Rate rate(10.0);
 
-        int _n_cycles_target;
+        int _n_cycles_target = 0;
+        float _target_time = 0.0;
 
         if (_MISSIONTYPE == SPIRAL) {
             _n_cycles_target = 6;
         }
         else if (_MISSIONTYPE == OUTERPERIM) {
             _n_cycles_target = 1;
+        }
+
+        if (_MISSIONTYPE == HOVERTEST) {
+            _target_time = 300.0;
+        }
+        else {
+            _target_time = 5.0;
         }
 
 	// main loop
@@ -399,12 +408,15 @@ int MissionNode::run() {
                     if (_MISSIONTYPE == LINEANDHOME) {
                         _STATE = LINE;
                     }
+                    else if (_MISSIONTYPE == HOVERTEST) {
+                        _STATE = LOITER;
+                    }
                     else {
                         _STATE = Perimeter_Search;
-                        _speed_msg.data = _target_v;
-                        _speed_pub.publish(_speed_msg);
                     }
                 }
+                _speed_msg.data = _target_v;
+                _speed_pub.publish(_speed_msg);
             }
             else if(_STATE == Perimeter_Search) {
                 // Check if we have completed enough cycles
@@ -419,8 +431,13 @@ int MissionNode::run() {
             }
             else if(_STATE == LOITER) {
                 _end = time(NULL);
-                if (_end - _start >= 5.0) {
-                    _STATE = Perimeter_Search;
+                if (_end - _start >= _target_time) {
+                    if (_MISSIONTYPE == HOVERTEST) {
+                        _STATE = GOHOME;
+                    }
+                    else {
+                        _STATE = Perimeter_Search;
+                    }
                 }
             }
             else if(_STATE == GOHOME) {
@@ -462,7 +479,6 @@ int MissionNode::run() {
                      }
             }
             
-
             // Publish flight data
             _flight_alt_msg.data = _flight_alt;
             _flight_alt_pub.publish(_flight_alt_msg);
