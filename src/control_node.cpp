@@ -544,15 +544,15 @@ int ControlNode::run() {
                                      mavros_msgs::PositionTarget::IGNORE_YAW);
                     // Generalize this later to be based off longitude and lattitude, not distance from current position
 
-                    float diameter_search = (5/7)*_zc+28.57; // Diameter of ground below drone which is realized
+                    float diameter_search = (5.0/7.0)*(_zc + _u_offset)+28.57; // Diameter of ground below drone which is realized
                     //double lake_ctr_lat = 37.4224444;		// [deg]
                     //double lake_ctr_lon = -122.1760917;	// [deg]                    //cmd.yaw_rate = -k_yaw * (yaw - yawDes);
 
                     // Given these lat and long coordinates, the center of the circle is found relative to the drone
-                    float center_x = -160;//_e_offset; //_current_lon - lake_ctr_lon; //-160;
-                    float center_y = -70;//_n_offset; //_current_lat - lake_ctr_lat; //-70;
+                    float center_x = -_e_offset; //_current_lon - lake_ctr_lon; //-160;
+                    float center_y = -_n_offset; //_current_lat - lake_ctr_lat; //-70;
 
-                    float radius_search = diameter_search/2;
+                    float radius_search = diameter_search/2.0;
 
                     // Perform sweep of circle outer perimeter:
                     float xL = (radius-radius_search)*cos(angle*M_PI/180.0);// + center_x;

@@ -59,7 +59,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-        MissionNode(std::string mission_type, float target_v, float flight_alt);
+        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -119,6 +119,7 @@ private:
         float _zc;
 
         // Extra data for state machine
+        float _target_time = 0.0;
         time_t _start;
         time_t _end;
         float _dAlongLine = 0;
@@ -197,8 +198,8 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt) :
-    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt){
+MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t) :
+    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t){
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -258,6 +259,12 @@ void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::Co
     // NOTE: this callback is for an example of how to setup a callback, you may
     // want to move this information to a mission handling node
     _id = msg->id;
+    if (_id.size() >= 1) {
+        _id_values_msg.data = _id[0];
+        _id_values_pub.publish(_id_values_msg);
+    }
+
+
     _n = msg->n;
     _e = msg->e;
 }
@@ -317,10 +324,11 @@ int MissionNode::run() {
         ros::Rate rate(10.0);
 
         int _n_cycles_target = 0;
-        float _target_time = 0.0;
 
         if (_MISSIONTYPE == SPIRAL) {
-            _n_cycles_target = 6;
+            float outer_radius = 160.0;
+            float diameter_search = (5.0/7.0)*(_flight_alt + _u_offset)+28.57; // Diameter of ground below drone which is realized
+            _n_cycles_target = static_cast<int>((outer_radius/diameter_search) + 1);
         }
         else if (_MISSIONTYPE == OUTERPERIM) {
             _n_cycles_target = 1;
@@ -328,9 +336,6 @@ int MissionNode::run() {
 
         if (_MISSIONTYPE == HOVERTEST) {
             _target_time = 300.0;
-        }
-        else {
-            _target_time = 5.0;
         }
 
 	// main loop
@@ -504,13 +509,14 @@ int main(int argc, char **argv) {
 	// get parameters from the launch file which define some mission
 	// settings
 	ros::NodeHandle private_nh("~");
-        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL
-        std::string mission_type = HOVERTEST;
-        float target_v = 6.0;
-        float flight_alt = 20.0;
+        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST
+        std::string mission_type = OUTERPERIM;
+        float target_v = 4.0;
+        float flight_alt = 60.0;
+        float loiter_t = 5.0;
 
 	// create the node
-        MissionNode node(mission_type, target_v, flight_alt);
+        MissionNode node(mission_type, target_v, flight_alt, loiter_t);
 
 	// run the node
 	return node.run();
