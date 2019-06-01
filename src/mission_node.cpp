@@ -77,6 +77,7 @@ private:
         std::string _STATE;
         float _flight_alt;
         int _n_cycles = 0;
+        float _target_v = 0.0;
 
 	// data
 	mavros_msgs::State _current_state;
