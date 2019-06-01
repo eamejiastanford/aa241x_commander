@@ -59,7 +59,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-        MissionNode(std::string mission_type);
+        MissionNode(std::string mission_type, float target_v, float flight_alt);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -92,7 +92,7 @@ private:
         std_msgs::Float64 _e_values_msg;
         std_msgs::Int64 _id_values_msg;
         aa241x_mission::PersonEstimate _person_found_msg;
-        std:msgs::Float64 _speed_msg;
+        std_msgs::Float64 _speed_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -197,7 +197,8 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type, float target_v) : _MISSIONTYPE(mission_type), _target_v(target_v) {
+MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt) :
+    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt){
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -398,9 +399,6 @@ int MissionNode::run() {
 
             }
 
-            // Set flight parameters
-            _flight_alt = 20.0; // above lake center ground level
-
             // State machine
             if     (_STATE == TAKEOFF) {
                 // Check if we are close enough to finishing takeoff
@@ -409,6 +407,7 @@ int MissionNode::run() {
                         _STATE = LINE;
                     }
                     else if (_MISSIONTYPE == HOVERTEST) {
+                        _start = time(0);
                         _STATE = LOITER;
                     }
                     else {
@@ -506,11 +505,12 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL
-        std::string mission_type = OUTERPERIM;
-        float target_v = 3.0;
+        std::string mission_type = HOVERTEST;
+        float target_v = 6.0;
+        float flight_alt = 20.0;
 
 	// create the node
-        MissionNode node(mission_type, target_v);
+        MissionNode node(mission_type, target_v, flight_alt);
 
 	// run the node
 	return node.run();
