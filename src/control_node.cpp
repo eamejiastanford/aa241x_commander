@@ -677,7 +677,8 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     if (_tag_found == true ){
         vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
         vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-        vel.z  = -kpz * (3.0 - _tag_abs_z);                       // Don't translate vertically
+//        vel.z = -kpz * (3.0 - _tag_abs_z);      // Unstable controller - no feedback
+        vel.z = -kpz * (_zc - (3.0 - _tag_abs_z));
     }
     else {
         // Localized search to find April Tag location
@@ -849,7 +850,8 @@ int main(int argc, char **argv) {
         ros::NodeHandle private_nh("~");
 
         // Line to follow:
-        float thetaLine_desired = 225.0*M_PI/180.0;
+//        float thetaLine_desired = 225.0*M_PI/180.0;
+        float thetaLine_desired = 0;
         float x0 = 50.0;
         float y0 = 50.0;
 
