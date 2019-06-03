@@ -23,6 +23,7 @@
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/Int64.h>
+#include <std_msgs/Bool.h>
 #include <bits/stdc++.h>
 #include <vector>
 #include <algorithm>
@@ -34,14 +35,13 @@ using namespace std;
 const std::string NOTOFFBOARD = "NOTOFFBOARD";
 const std::string TAKEOFF = "TAKEOFF";
 const std::string LINE = "LINE";
-const std::string LINE2 = "LINE2";
-const std::string LINE3 = "LINE3";
 const std::string GOHOME = "GOHOME";
 const std::string DROP_ALT = "DROP_ALT";
 const std::string LAND = "LAND";
 const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
+const std::string Navigate_to_land = "Navigate_to_land";
 
 // Define possible missions
 const std::string SPIRAL = "SPIRAL";
@@ -93,6 +93,11 @@ private:
         std_msgs::Int64 _id_values_msg;
         aa241x_mission::PersonEstimate _person_found_msg;
         std_msgs::Float64 _speed_msg;
+        std_msgs::Float64 _tag_abs_x_msg;
+        std_msgs::Float64 _tag_abs_y_msg;
+        std_msgs::Float64 _tag_abs_z_msg;
+
+
 
         // Beacon current information
         std::vector<int> _id;
@@ -113,10 +118,25 @@ private:
 	float _landing_e = 0.0f;
 	float _landing_n = 0.0f;
 
+        // Position of april tag from the drone camera
+        float _tag_rel_x = 0.0f; // Camera x
+        float _tag_rel_y = 0.0f; // Camera y
+        float _tag_rel_z = 0.0f; // Camera z
+
+        // Position of april tag from the lake origin
+        float _tag_abs_x = 0.0f; // N
+        float _tag_abs_y = 0.0f; // E
+        float _tag_abs_z = 0.0f; // U
+
         // Position
         float _xc;
         float _yc;
         float _zc;
+
+        // Orientation
+        float _yaw = 0.0f;
+        float _roll = 0.0f;
+        float _pitch = 0.0f;
 
         // Extra data for state machine
         float _target_time = 0.0;
@@ -132,6 +152,13 @@ private:
         ros::Subscriber _battery_sub;		// the curre = 0nt battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
         ros::Subscriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
+        ros::Subscriber _tag_rel_x_sub;
+        ros::Subscriber _tag_rel_y_sub;
+        ros::Subscriber _tag_rel_z_sub;
+        ros::Subscriber _pitch_sub;
+        ros::Subscriber _yaw_sub;
+        ros::Subscriber _roll_sub;
+
 
         // TODO: add subscribers here
 
@@ -146,6 +173,9 @@ private:
         ros::Publisher _n_values_pub;
         ros::Publisher _person_found_pub;
         ros::Publisher _speed_pub;
+        ros::Publisher _tag_abs_x_pub;
+        ros::Publisher _tag_abs_y_pub;
+        ros::Publisher _tag_abs_z_pub;
 
 	// TODO: you may want to have the mission node publish commands to your
 	// control node.
@@ -189,7 +219,22 @@ private:
 
         void nCyclesCallback(const std_msgs::Int64::ConstPtr& msg);
 
+        void tagRel_xCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void tagRel_yCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void tagRel_zCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void rollCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void pitchCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void yawCallback(const std_msgs::Float64::ConstPtr& msg);
+
+
         void waitForFCUConnection();
+
+        void rotateCameraToLagFrame();
 
 	// TODO: add callbacks here
 
@@ -209,6 +254,12 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
         _mission_state_sub = _nh.subscribe<aa241x_mission::MissionState>("mission_state", 10, &MissionNode::missionStateCallback, this);
         _dAlongLine_sub = _nh.subscribe<std_msgs::Float64>("dAlongLine", 10, &MissionNode::dAlongLineCallback, this);
+        _tag_rel_x_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_x", 10, &MissionNode::tagRel_xCallback, this);
+        _tag_rel_y_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_y", 10, &MissionNode::tagRel_yCallback, this);
+        _tag_rel_z_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_z", 10, &MissionNode::tagRel_zCallback, this);
+        _roll_sub = _nh.subscribe<std_msgs::Float64>("roll", 10, &MissionNode::rollCallback, this);
+        _pitch_sub = _nh.subscribe<std_msgs::Float64>("pitch", 10, &MissionNode::pitchCallback, this);
+        _yaw_sub = _nh.subscribe<std_msgs::Float64>("yaw", 10, &MissionNode::yawCallback, this);
 
 	// service
 	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
@@ -221,6 +272,30 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _id_values_pub = _nh.advertise<std_msgs::Int64>("id_value", 10);
         _person_found_pub = _nh.advertise<aa241x_mission::PersonEstimate>("person_found", 10);
         _speed_pub = _nh.advertise<std_msgs::Float64>("speed", 10);
+        _tag_abs_x_pub = _nh.advertise<std_msgs::Float64>("tag_abs_x", 10);
+        _tag_abs_y_pub = _nh.advertise<std_msgs::Float64>("tag_abs_y", 10);
+        _tag_abs_z_pub = _nh.advertise<std_msgs::Float64>("tag_abs_z", 10);
+}
+
+// Records the x measure of the position vector from the drone camera to the april tag (landing location)
+void MissionNode::tagRel_xCallback(const std_msgs::Float64::ConstPtr& msg) {
+
+    _tag_rel_x = msg->data;
+
+}
+
+// Records the y measure of the position vector from the drone camera to the april tag (landing location)
+void MissionNode::tagRel_yCallback(const std_msgs::Float64::ConstPtr& msg) {
+
+    _tag_rel_y = msg->data;
+
+}
+
+// Records the x measure of the position vector from the drone camera to the april tag (landing location)
+void MissionNode::tagRel_zCallback(const std_msgs::Float64::ConstPtr& msg) {
+
+    _tag_rel_z = msg->data;
+
 }
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
@@ -264,7 +339,6 @@ void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::Co
         _id_values_pub.publish(_id_values_msg);
     }
 
-
     _n = msg->n;
     _e = msg->e;
 }
@@ -299,6 +373,43 @@ void MissionNode::waitForFCUConnection() {
                 ros::spinOnce();
                 rate.sleep();
         }
+}
+
+void MissionNode::yawCallback(const std_msgs::Float64::ConstPtr& msg){
+    _yaw = msg->data;
+}
+
+void MissionNode::pitchCallback(const std_msgs::Float64::ConstPtr& msg){
+    _pitch = msg->data;
+}
+
+void MissionNode::rollCallback(const std_msgs::Float64::ConstPtr& msg){
+    _roll = msg->data;
+}
+
+// Rotates tag position vector from camera frame to lake lag frame
+void MissionNode::rotateCameraToLagFrame() {
+
+    // Relative position from camera to tag (camera frame)
+    float x = _tag_rel_x;
+    float y = _tag_rel_y;
+    float z = _tag_rel_z;
+
+    // Dot products
+    float bxDotnx = -cos(_pitch)*cos(_yaw);
+    float bxDotny = -sin(_yaw)*cos(_pitch);
+    float bxDotnz = sin(_pitch);
+    float byDotnx = sin(_pitch)*sin(_roll)*cos(_yaw) - sin(_yaw)*cos(_roll);
+    float byDotny = cos(_roll)*cos(_yaw) + sin(_pitch)*sin(_roll)*sin(_yaw);
+    float byDotnz = sin(_roll)*cos(_pitch);
+    float bzDotnx = -sin(_roll)*sin(_yaw) - sin(_pitch)*cos(_roll)*cos(_yaw);
+    float bzDotny = sin(_roll)*cos(_yaw)-sin(_pitch)*sin(_yaw)*cos(_roll);
+    float bzDotnz = -cos(_pitch)*cos(_roll);
+
+    // Rotate the vector and move to lake frame (Distances from center of Lake Lag)
+    _tag_abs_x = x * bxDotnx + y * byDotnx + z * bzDotnx + _xc;
+    _tag_abs_y = x * bxDotny + y * byDotny + z * bzDotny + _yc;
+    _tag_abs_z = x * bxDotnz + y * byDotnz + z * bzDotnz + _zc;
 }
 
 int MissionNode::run() {
@@ -473,6 +584,22 @@ int MissionNode::run() {
             else if (_STATE == DROP_ALT){
                 // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
                 if (abs(_zc - (3.0-_u_offset)) < 0.1 ){
+                    _STATE = Navigate_to_land;
+//                    _STATE = LAND;
+                }
+            }
+            else if (_STATE == Navigate_to_land){
+                // Updating tag absolute position in lake lag frame
+                rotateCameraToLagFrame();
+                _tag_abs_x_msg.data = _tag_abs_x;
+                _tag_abs_y_msg.data = _tag_abs_y;
+                _tag_abs_z_msg.data = _tag_abs_z;
+                // Publish Absolute distances:
+                _tag_abs_x_pub.publish(_tag_abs_x_msg);
+                _tag_abs_y_pub.publish(_tag_abs_y_msg);
+                _tag_abs_z_pub.publish(_tag_abs_z_msg);
+
+                if (abs(_xc - _tag_abs_x) < 0.1 && abs(_yc - _tag_abs_y) < 0.1){
                     _STATE = LAND;
                 }
             }
@@ -510,9 +637,9 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST
-        std::string mission_type = OUTERPERIM;
+        std::string mission_type = LINEANDHOME;
         float target_v = 4.0;
-        float flight_alt = 60.0;
+        float flight_alt = 30.0;
         float loiter_t = 5.0;
 
 	// create the node
