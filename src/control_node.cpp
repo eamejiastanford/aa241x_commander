@@ -678,7 +678,8 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
         vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
         vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
 //        vel.z = -kpz * (3.0 - _tag_abs_z);      // Unstable controller - no feedback
-        vel.z = -kpz * (_zc - (3.0 - _tag_abs_z));
+//        vel.z = -kpz * (_zc - (3.0 - _tag_abs_z)); // Drone was crashing into ground and not transitioning to land
+        vel.z = 0.0;
     }
     else {
         // Localized search to find April Tag location

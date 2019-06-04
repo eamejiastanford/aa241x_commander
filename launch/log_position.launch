@@ -1,7 +1,7 @@
 <launch>
 	<!-- launch file to log elements that might be of interest for the controller -->
 
-	<node pkg="rosbag" type="record" name="position_bag"
+	<node pkg="rosbag" type="record" name="mavros"
 		args="-o $(env HOME)/rosbags/position_bag
 				/mavros/local_position/pose
 				/mavros/local_position/velocity
@@ -12,5 +12,15 @@
 				/mavros/altitude
 				/mavros/time_reference
 				/rosout" />
+
+	<node pkg="rosbag" type="record" name="FSM"
+		args="-o $(env HOME)/rosbags/position_bag
+				/drone_state" />
+
+	<node pkg="rosbag" type="record" name="controller_data"
+		args="-o $(env HOME)/rosbags/position_bag
+				/xc
+				/yc
+				/zc" />
 
 </launch>

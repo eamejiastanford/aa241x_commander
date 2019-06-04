@@ -151,7 +151,7 @@ private:
         ros::Subscriber _mission_state_sub;     // mission state
         ros::Subscriber _battery_sub;		// the curre = 0nt battery information
         ros::Subscriber _n_cycles_sub;          // number of cycles completed in perimeter search
-        ros::Subscriber _dAlongLine_sub; // Subscribes to the traveled distance along the line
+        ros::Subscriber _dAlongLine_sub;        // Subscribes to the traveled distance along the line
         ros::Subscriber _tag_rel_x_sub;
         ros::Subscriber _tag_rel_y_sub;
         ros::Subscriber _tag_rel_z_sub;
@@ -176,9 +176,6 @@ private:
         ros::Publisher _tag_abs_x_pub;
         ros::Publisher _tag_abs_y_pub;
         ros::Publisher _tag_abs_z_pub;
-
-	// TODO: you may want to have the mission node publish commands to your
-	// control node.
 
 	// callbacks
 
@@ -215,7 +212,7 @@ private:
 	 */
 	void batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg);
 
-    void dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg);
+        void dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void nCyclesCallback(const std_msgs::Int64::ConstPtr& msg);
 
@@ -231,15 +228,9 @@ private:
 
         void yawCallback(const std_msgs::Float64::ConstPtr& msg);
 
-
         void waitForFCUConnection();
 
         void rotateCameraToLagFrame();
-
-	// TODO: add callbacks here
-
-	// helper functions
-
 };
 
 
@@ -279,29 +270,21 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
 
 // Records the x measure of the position vector from the drone camera to the april tag (landing location)
 void MissionNode::tagRel_xCallback(const std_msgs::Float64::ConstPtr& msg) {
-
     _tag_rel_x = msg->data;
-
 }
 
 // Records the y measure of the position vector from the drone camera to the april tag (landing location)
 void MissionNode::tagRel_yCallback(const std_msgs::Float64::ConstPtr& msg) {
-
     _tag_rel_y = msg->data;
-
 }
 
 // Records the x measure of the position vector from the drone camera to the april tag (landing location)
 void MissionNode::tagRel_zCallback(const std_msgs::Float64::ConstPtr& msg) {
-
     _tag_rel_z = msg->data;
-
 }
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
-
     _dAlongLine_msg = *msg;
-
     _dAlongLine = _dAlongLine_msg.data;
 }
 
@@ -311,10 +294,8 @@ void MissionNode::stateCallback(const mavros_msgs::State::ConstPtr& msg) {
 	_current_state = *msg;
 }
 
-
 void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
 	// save the current local position locally to be used in the main loop
-	// TODO: account for offset to convert from PX4 coordinate to lake lag frame
 	_current_local_pos = *msg;
 
 	// adjust the position with the offset to convert the saved local position
@@ -328,7 +309,6 @@ void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         _zc = _current_local_pos.pose.position.z;
 }
 
-
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
     // TODO: use the information from the measurement as desired
     // NOTE: this callback is for an example of how to setup a callback, you may
@@ -338,11 +318,9 @@ void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::Co
         _id_values_msg.data = _id[0];
         _id_values_pub.publish(_id_values_msg);
     }
-
     _n = msg->n;
     _e = msg->e;
 }
-
 
 void MissionNode::missionStateCallback(const aa241x_mission::MissionState::ConstPtr& msg) {
 	// save the offset information
@@ -350,7 +328,6 @@ void MissionNode::missionStateCallback(const aa241x_mission::MissionState::Const
 	_n_offset = msg->n_offset;
 	_u_offset = msg->u_offset;
 }
-
 
 void MissionNode::batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg) {
 	_battery_state = *msg;
@@ -452,7 +429,6 @@ int MissionNode::run() {
 	// main loop
 	while (ros::ok()) {
 
-
             float x0;
             float y0;
             float z0;
@@ -512,7 +488,6 @@ int MissionNode::run() {
                 x0 = _xc;
                 y0 = _yc;
                 z0 = _zc;
-
             }
 
             // State machine
@@ -542,7 +517,6 @@ int MissionNode::run() {
                 else if(_n_cycles == _n_cycles_target) {//static_cast<int>(radius/radius_search)){ // completed two rotations
                     _STATE = GOHOME;
                 }
-
             }
             else if(_STATE == LOITER) {
                 _end = time(NULL);
@@ -585,7 +559,7 @@ int MissionNode::run() {
                 // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
                 if (abs(_zc - (3.0-_u_offset)) < 0.1 ){
                     _STATE = Navigate_to_land;
-//                    _STATE = LAND;
+                    //_STATE = LAND;
                 }
             }
             else if (_STATE == Navigate_to_land){
