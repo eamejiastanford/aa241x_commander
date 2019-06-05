@@ -310,7 +310,7 @@ void ControlNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& m
         // Add the offsets to switch to lake lag (centered) frame
         _current_local_pos.pose.position.x += _e_offset;
         _current_local_pos.pose.position.y += _n_offset;
-        _current_local_pos.pose.position.z -= _u_offset;
+        _current_local_pos.pose.position.z += _u_offset;
 
         // Get the position
         _xc = _current_local_pos.pose.position.x; // N
@@ -526,11 +526,11 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Jump at max takeoff speed
-    if (_zc <= (2.5-_u_offset)){ // need to account for _u_offset here..
+    if (_zc <= (2.5+_u_offset)){ // need to account for _u_offset here..
         // Commnad velocities to control position
         vel.x = 0.0; // Don't translate laterally
         vel.y = 0.0; // Don't translate laterally
-        vel.z = -kpz * (_zc - _flight_alt);
+        vel.z = -kpz * (_zc - (_flight_alt));
 
         if (abs(vel.z) > _vzTakeoff) {
             vel.z = sign(vel.z) * _vzTakeoff; // saturate with takeoff speed
@@ -541,7 +541,7 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
         // Commnad velocities to control position
         vel.x = 0.0; // Don't translate laterally
         vel.y = 0.0; // Don't translate laterally
-        vel.z = -kpz * (_zc - _flight_alt);
+        vel.z = -kpz * (_zc - (_flight_alt));
 
         // Saturate velocities
         saturateVelocities(vel);
@@ -552,7 +552,7 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
 void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
 
     // Diameter of ground below drone which is realized
-    float diameter_search = (5.0/7.0)*(_zc + _u_offset)+28.57;
+    float diameter_search = (5.0/7.0)*(_flight_alt)+28.57;
     float radius_search = diameter_search/2.0;
 
     // Perform sweep of circle outer perimeter:
@@ -581,9 +581,9 @@ void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
     if (pt_dist <= 15.0){
         _angle = _angle+5;
     }
-    if (_angle == 360){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
-        _angle = 0;
-        _radius = _radius-diameter_search;
+    if (_angle == 375){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
+        _angle = 15;
+        _radius = _radius-diameter_search*0.8;
         _cycle = _cycle + 1;
         _n_cycles_msg.data = _cycle;
         _n_cycles_pub.publish(_n_cycles_msg);
@@ -642,7 +642,7 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     // Command velocities to control position
     vel.x = 0.0; // Don't translate laterally
     vel.y = 0.0; // Don't translate laterally
-    vel.z = -kpz * (_zc - _z0);
+    vel.z = -kpz * (_zc - _z0); // Fix this with offsets
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -661,7 +661,7 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = 0.0; // Don't translate laterally
     vel.y = 0.0; // Don't translate laterally
-    vel.z  = -kpz * (_zc - (3.0-_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+    vel.z  = -kpz * (_zc - (3.0+_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
 
     // Saturate velocities
@@ -770,7 +770,7 @@ int ControlNode::run() {
                         // Define home position as position when offboard mode is initiated
                         _x0 = _xc;
                         _y0 = _yc;
-                        _z0 = _zc;
+                        _z0 = _zc; // fix with offsets
 
                         // timestamp the message and send it
                         cmd.header.stamp = ros::Time::now();

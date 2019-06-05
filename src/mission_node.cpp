@@ -76,7 +76,7 @@ private:
         std::string _MISSIONTYPE;
 
         std::string _STATE;
-        float _flight_alt;
+        float _flight_alt; // from center of lake lag
         int _n_cycles = 0;
         float _target_v = 0.0;
 
@@ -129,9 +129,9 @@ private:
         float _tag_abs_z = 0.0f; // U
 
         // Position
-        float _xc;
-        float _yc;
-        float _zc;
+        float _xc = 0.0;
+        float _yc = 0.0;
+        float _zc = 0.0;
 
         // Orientation
         float _yaw = 0.0f;
@@ -158,7 +158,9 @@ private:
         ros::Subscriber _pitch_sub;
         ros::Subscriber _yaw_sub;
         ros::Subscriber _roll_sub;
-
+        ros::Subscriber _xc_sub;
+        ros::Subscriber _yc_sub;
+        ros::Subscriber _zc_sub;
 
         // TODO: add subscribers here
 
@@ -188,7 +190,7 @@ private:
 	 * callback for the local position and orientation computed by the pixhawk.
 	 * @param msg pose stamped message type
 	 */
-	void localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+//	void localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
 	/**
 	 * callback for the sensor measurement for the AA241x mission
@@ -228,6 +230,12 @@ private:
 
         void yawCallback(const std_msgs::Float64::ConstPtr& msg);
 
+        void xcCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void ycCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void zcCallback(const std_msgs::Float64::ConstPtr& msg);
+
         void waitForFCUConnection();
 
         void rotateCameraToLagFrame();
@@ -239,7 +247,7 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
-	_local_pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 1, &MissionNode::localPosCallback, this);
+        //_local_pos_sub = _nh.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 1, &MissionNode::localPosCallback, this);
 	_sensor_meas_sub =_nh.subscribe<aa241x_mission::SensorMeasurement>("measurement", 10, &MissionNode::sensorMeasCallback, this);
 	_battery_sub =_nh.subscribe<sensor_msgs::BatteryState>("mavros/battery", 10, &MissionNode::batteryCallback, this);
         _n_cycles_sub =_nh.subscribe<std_msgs::Int64>("n_cycles", 10, &MissionNode::nCyclesCallback, this);
@@ -251,6 +259,9 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _roll_sub = _nh.subscribe<std_msgs::Float64>("roll", 10, &MissionNode::rollCallback, this);
         _pitch_sub = _nh.subscribe<std_msgs::Float64>("pitch", 10, &MissionNode::pitchCallback, this);
         _yaw_sub = _nh.subscribe<std_msgs::Float64>("yaw", 10, &MissionNode::yawCallback, this);
+        _xc_sub = _nh.subscribe<std_msgs::Float64>("xc", 10, &MissionNode::xcCallback, this);
+        _yc_sub = _nh.subscribe<std_msgs::Float64>("yc", 10, &MissionNode::ycCallback, this);
+        _zc_sub = _nh.subscribe<std_msgs::Float64>("zc", 10, &MissionNode::zcCallback, this);
 
 	// service
 	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
@@ -294,20 +305,34 @@ void MissionNode::stateCallback(const mavros_msgs::State::ConstPtr& msg) {
 	_current_state = *msg;
 }
 
-void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-	// save the current local position locally to be used in the main loop
-	_current_local_pos = *msg;
-
-	// adjust the position with the offset to convert the saved local position
-	// information into the Lake Lag frame
-	_current_local_pos.pose.position.x += _e_offset;
-	_current_local_pos.pose.position.y += _n_offset;
-        _current_local_pos.pose.position.z -= _u_offset;
-
-        _xc = _current_local_pos.pose.position.x;
-        _yc = _current_local_pos.pose.position.y;
-        _zc = _current_local_pos.pose.position.z;
+void MissionNode::xcCallback(const std_msgs::Float64::ConstPtr& msg) {
+        // save the state locally to be used in the main loop
+        _xc = msg ->data;
 }
+void MissionNode::ycCallback(const std_msgs::Float64::ConstPtr& msg) {
+        // save the state locally to be used in the main loop
+        _yc = msg ->data;
+}
+void MissionNode::zcCallback(const std_msgs::Float64::ConstPtr& msg) {
+        // save the state locally to be used in the main loop
+        _zc = msg->data;
+}
+
+
+//void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+//	// save the current local position locally to be used in the main loop
+//	_current_local_pos = *msg;
+
+//	// adjust the position with the offset to convert the saved local position
+//	// information into the Lake Lag frame
+//	_current_local_pos.pose.position.x += _e_offset;
+//	_current_local_pos.pose.position.y += _n_offset;
+//        _current_local_pos.pose.position.z += _u_offset;
+
+//        _xc = _current_local_pos.pose.position.x;
+//        _yc = _current_local_pos.pose.position.y;
+//        _zc = _current_local_pos.pose.position.z;
+//}
 
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
     // TODO: use the information from the measurement as desired
@@ -415,8 +440,8 @@ int MissionNode::run() {
 
         if (_MISSIONTYPE == SPIRAL) {
             float outer_radius = 160.0;
-            float diameter_search = (5.0/7.0)*(_flight_alt + _u_offset)+28.57; // Diameter of ground below drone which is realized
-            _n_cycles_target = static_cast<int>((outer_radius/diameter_search) + 1);
+            float diameter_search = (5.0/7.0)*(_flight_alt)+28.57; // Diameter of ground below drone which is realized
+            _n_cycles_target = static_cast<int>((outer_radius/(0.8*diameter_search))+1);
         }
         else if (_MISSIONTYPE == OUTERPERIM) {
             _n_cycles_target = 1;
@@ -455,7 +480,7 @@ int MissionNode::run() {
                 if(iMatch != _id_total.size() ) {
                     int jMatch = _n_total[iMatch].size();
                     for(int i = 0; i < _n_total[iMatch].size(); i++) {
-                        if(abs(_n_total[iMatch][i] - _n[index]) <= 1e-7) {
+                        if(abs(_n_total[iMatch][i] - _n[index]) <= 1e-10) {
                             jMatch = i;
                         }
                     }
@@ -493,6 +518,7 @@ int MissionNode::run() {
             // State machine
             if     (_STATE == TAKEOFF) {
                 // Check if we are close enough to finishing takeoff
+
                 if(abs(_zc - _flight_alt) < 1.0) {
                     if (_MISSIONTYPE == LINEANDHOME) {
                         _STATE = LINE;
@@ -557,7 +583,8 @@ int MissionNode::run() {
             }
             else if (_STATE == DROP_ALT){
                 // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
-                if (abs(_zc - (3.0-_u_offset)) < 0.1 ){
+                float landing_offset = _u_offset; // for now, land at the starting location
+                if (abs(_zc - (3.0+landing_offset)) < 0.1 ){ // For landing at the landing location
                     _STATE = Navigate_to_land;
                     //_STATE = LAND;
                 }
@@ -585,7 +612,7 @@ int MissionNode::run() {
             }
             
             // Publish flight data
-            _flight_alt_msg.data = _flight_alt;
+            _flight_alt_msg.data = _flight_alt; // flight altitude from center of lake lag
             _flight_alt_pub.publish(_flight_alt_msg);
 
             // Publish drone mission state
@@ -611,10 +638,10 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST
-        std::string mission_type = LINEANDHOME;
+        std::string mission_type = SPIRAL;
         float target_v = 4.0;
-        float flight_alt = 30.0;
-        float loiter_t = 5.0;
+        float flight_alt = 45.0;
+        float loiter_t = 10.0;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t);
