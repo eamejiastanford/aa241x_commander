@@ -53,7 +53,6 @@ private:
 
 	// node handler
         ros::NodeHandle _nh;
-//	image_transport::ImageTransport _it;
 
 
 	// settings, etc
@@ -139,7 +138,6 @@ private:
 VisionNode::VisionNode(int frame_width, int frame_height) :
 _frame_width(frame_width),
 _frame_height(frame_height)//,
-//_it(_nh)
 {
     // Publishers
     _tag_relative_x_pub = _nh.advertise<std_msgs::Float64>("tag_rel_x", 10);
