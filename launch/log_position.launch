@@ -20,4 +20,14 @@
 				/id_value
 				/measurement" />
 
+	<node pkg="rosbag" type="record" name="camera"
+		args="-o $(env HOME)/rosbags/camera_bag
+				/tagFound
+				/tag_rel_x
+				/tag_rel_y
+				/tag_rel_z
+				/tag_abs_x
+				/tag_abs_y
+				/tag_abs_z" />
+
 </launch>

@@ -33,6 +33,8 @@ const std::string LOITER = "LOITER";
 const std::string DROP_ALT = "DROP_ALT";
 const std::string Navigate_to_land = "Navigate_to_land";
 const std::string Perimeter_Search = "Perimeter_Search";
+const std::string CAMERA_TEST = "CAMERA_TEST";
+
 
 /**
  * class to contain the functionality of the controller node.
@@ -656,11 +658,12 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 
+    float kp = 1.0;
     float kpz = 1.0;
 
     // Commnad velocities to control position
-    vel.x = 0.0; // Don't translate laterally
-    vel.y = 0.0; // Don't translate laterally
+    vel.x = -kp * (_xc - _landing_e); // Hold position landing position
+    vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
     vel.z  = -kpz * (_zc - (3.0+_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
 
@@ -677,13 +680,14 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     if (_tag_found == true ){
         vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
         vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-//        vel.z = -kpz * (3.0 - _tag_abs_z);      // Unstable controller - no feedback
-//        vel.z = -kpz * (_zc - (3.0 - _tag_abs_z)); // Drone was crashing into ground and not transitioning to land
         vel.z = 0.0;
     }
     else {
         // Localized search to find April Tag location
-
+        // for now it will just stay in hover mode forever
+        vel.x = 0.0;
+        vel.y = 0.0;
+        vel.z = 0.0;
     }
 
     // Saturate velocities
@@ -816,6 +820,11 @@ int ControlNode::run() {
                 }
                 else if( _STATE == LOITER){
                     loiterControl(vel);
+                }
+                else if(_STATE == CAMERA_TEST) {
+                    vel.x = 0;
+                    vel.y = 0;
+                    vel.z = 0;
                 }
 
                 // Assign velocity control
