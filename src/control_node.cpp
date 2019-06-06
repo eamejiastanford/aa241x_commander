@@ -656,11 +656,12 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 
+    float kp = 1.0;
     float kpz = 1.0;
 
     // Commnad velocities to control position
-    vel.x = 0.0; // Don't translate laterally
-    vel.y = 0.0; // Don't translate laterally
+    vel.x = -kp * (_xc - _landing_e); // Hold position landing position
+    vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
     vel.z  = -kpz * (_zc - (3.0+_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
 
