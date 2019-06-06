@@ -318,22 +318,6 @@ void MissionNode::zcCallback(const std_msgs::Float64::ConstPtr& msg) {
         _zc = msg->data;
 }
 
-
-//void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-//	// save the current local position locally to be used in the main loop
-//	_current_local_pos = *msg;
-
-//	// adjust the position with the offset to convert the saved local position
-//	// information into the Lake Lag frame
-//	_current_local_pos.pose.position.x += _e_offset;
-//	_current_local_pos.pose.position.y += _n_offset;
-//        _current_local_pos.pose.position.z += _u_offset;
-
-//        _xc = _current_local_pos.pose.position.x;
-//        _yc = _current_local_pos.pose.position.y;
-//        _zc = _current_local_pos.pose.position.z;
-//}
-
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
     // TODO: use the information from the measurement as desired
     // NOTE: this callback is for an example of how to setup a callback, you may
