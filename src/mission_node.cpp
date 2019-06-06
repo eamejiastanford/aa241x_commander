@@ -641,7 +641,7 @@ int main(int argc, char **argv) {
         std::string mission_type = SPIRAL;
         float target_v = 4.0;
         float flight_alt = 45.0;
-        float loiter_t = 10.0;
+        float loiter_t = 32.0;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t);
