@@ -42,12 +42,14 @@ const std::string LOITER = "LOITER";
 const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 const std::string Navigate_to_land = "Navigate_to_land";
+const std::string CAMERA_TEST = "CAMERA_TEST";
 
 // Define possible missions
 const std::string SPIRAL = "SPIRAL";
 const std::string LINEANDHOME = "LINEANDHOME";
 const std::string OUTERPERIM = "OUTERPERIM";
 const std::string HOVERTEST = "HOVERTEST";
+const std::string CAMERATEST = "CAMERATEST";
 
 /**
  * class to contain the functionality of the mission node.
@@ -122,6 +124,7 @@ private:
         float _tag_rel_x = 0.0f; // Camera x
         float _tag_rel_y = 0.0f; // Camera y
         float _tag_rel_z = 0.0f; // Camera z
+        bool _tag_found = false;
 
         // Position of april tag from the lake origin
         float _tag_abs_x = 0.0f; // N
@@ -155,6 +158,7 @@ private:
         ros::Subscriber _tag_rel_x_sub;
         ros::Subscriber _tag_rel_y_sub;
         ros::Subscriber _tag_rel_z_sub;
+        ros::Subscriber _tag_found_sub;
         ros::Subscriber _pitch_sub;
         ros::Subscriber _yaw_sub;
         ros::Subscriber _roll_sub;
@@ -224,6 +228,8 @@ private:
 
         void tagRel_zCallback(const std_msgs::Float64::ConstPtr& msg);
 
+        void tag_foundCallback(const std_msgs::Bool::ConstPtr& msg);
+
         void rollCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void pitchCallback(const std_msgs::Float64::ConstPtr& msg);
@@ -256,6 +262,7 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _tag_rel_x_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_x", 10, &MissionNode::tagRel_xCallback, this);
         _tag_rel_y_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_y", 10, &MissionNode::tagRel_yCallback, this);
         _tag_rel_z_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_z", 10, &MissionNode::tagRel_zCallback, this);
+        _nh.subscribe<std_msgs::Bool>("tagFound", 10, &ControlNode::tag_foundCallback, this);
         _roll_sub = _nh.subscribe<std_msgs::Float64>("roll", 10, &MissionNode::rollCallback, this);
         _pitch_sub = _nh.subscribe<std_msgs::Float64>("pitch", 10, &MissionNode::pitchCallback, this);
         _yaw_sub = _nh.subscribe<std_msgs::Float64>("yaw", 10, &MissionNode::yawCallback, this);
@@ -293,6 +300,9 @@ void MissionNode::tagRel_yCallback(const std_msgs::Float64::ConstPtr& msg) {
 void MissionNode::tagRel_zCallback(const std_msgs::Float64::ConstPtr& msg) {
     _tag_rel_z = msg->data;
 }
+void MissionNode::tag_foundCallback(const std_msgs::Bool::ConstPtr& msg) {
+    _tag_found = msg->data;
+}
 
 void MissionNode::dAlongLineCallback(const std_msgs::Float64::ConstPtr& msg) {
     _dAlongLine_msg = *msg;
@@ -318,22 +328,6 @@ void MissionNode::zcCallback(const std_msgs::Float64::ConstPtr& msg) {
         _zc = msg->data;
 }
 
-
-//void MissionNode::localPosCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-//	// save the current local position locally to be used in the main loop
-//	_current_local_pos = *msg;
-
-//	// adjust the position with the offset to convert the saved local position
-//	// information into the Lake Lag frame
-//	_current_local_pos.pose.position.x += _e_offset;
-//	_current_local_pos.pose.position.y += _n_offset;
-//        _current_local_pos.pose.position.z += _u_offset;
-
-//        _xc = _current_local_pos.pose.position.x;
-//        _yc = _current_local_pos.pose.position.y;
-//        _zc = _current_local_pos.pose.position.z;
-//}
-
 void MissionNode::sensorMeasCallback(const aa241x_mission::SensorMeasurement::ConstPtr& msg) {
     // TODO: use the information from the measurement as desired
     // NOTE: this callback is for an example of how to setup a callback, you may
@@ -356,12 +350,6 @@ void MissionNode::missionStateCallback(const aa241x_mission::MissionState::Const
 
 void MissionNode::batteryCallback(const sensor_msgs::BatteryState::ConstPtr& msg) {
 	_battery_state = *msg;
-
-	// TODO: currently the callback is configured to just save the data
-	//
-	// you can either make decisions based on the battery information here (e.g.
-	// change the state of the mission) or you can make those decisions in the
-	// while loop in the run() function
 }
 
 void MissionNode::nCyclesCallback(const std_msgs::Int64::ConstPtr& msg) {
@@ -445,6 +433,9 @@ int MissionNode::run() {
         }
         else if (_MISSIONTYPE == OUTERPERIM) {
             _n_cycles_target = 1;
+        }
+        else if (_MISSIONTYPE == CAMERATEST) {
+            _STATE = CAMERA_TEST;
         }
 
         if (_MISSIONTYPE == HOVERTEST) {
@@ -550,6 +541,9 @@ int MissionNode::run() {
                     if (_MISSIONTYPE == HOVERTEST) {
                         _STATE = GOHOME;
                     }
+                    else if (_tag_found == true){
+                        _STATE == Navigate_to_land;
+                    }
                     else {
                         _STATE = Perimeter_Search;
                     }
@@ -603,12 +597,30 @@ int MissionNode::run() {
                 if (abs(_xc - _tag_abs_x) < 0.1 && abs(_yc - _tag_abs_y) < 0.1){
                     _STATE = LAND;
                 }
+                else if (_tag_found == true){
+                    // currently this will loiter on every loop that sees a tag; needs to be changed to wait until drone navigates
+                    // to where it thinks the final landing location is
+                    _target_time = 10.0; // sets target time for hover over the April tag
+                    _STATE = LOITER;
+                }
             }
             else if(_STATE == LINE) {
                 // Check if we've travelled enough along the line
                 if (abs(_dAlongLine) >= 30.0){
                         _STATE = GOHOME;
                      }
+            }
+            else if(_STATE == CAMERA_TEST) {
+                // Update tag absolute position in lake lag frame
+                rotateCameraToLagFrame();
+                _tag_abs_x_msg.data = _tag_abs_x;
+                _tag_abs_y_msg.data = _tag_abs_y;
+                _tag_abs_z_msg.data = _tag_abs_z;
+                // Publish Absolute distances:
+                _tag_abs_x_pub.publish(_tag_abs_x_msg);
+                _tag_abs_y_pub.publish(_tag_abs_y_msg);
+                _tag_abs_z_pub.publish(_tag_abs_z_msg);
+
             }
             
             // Publish flight data
@@ -637,8 +649,8 @@ int main(int argc, char **argv) {
 	// get parameters from the launch file which define some mission
 	// settings
 	ros::NodeHandle private_nh("~");
-        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST
-        std::string mission_type = LINEANDHOME;
+        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
+        std::string mission_type = CAMERATEST;
         float target_v = 4.0;
         float flight_alt = 45.0;
         float loiter_t = 32.0;
