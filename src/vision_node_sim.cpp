@@ -302,7 +302,7 @@ int VisionNode::run() {
                 // Publish the vector from the drone to the april tag (camera frame)
             simTagPosition();
             std::default_random_engine generator;
-            std::normal_distribution<float> noise(0, 1.0);
+            std::normal_distribution<float> noise(0.0, 0.0);
             _tag_relative_x_msg.data = _xr + noise(generator);
             //_tag_relative_x_msg.data = _xr;
             _tag_relative_y_msg.data = _yr+ noise(generator);

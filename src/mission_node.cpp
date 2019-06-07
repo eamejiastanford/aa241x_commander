@@ -52,6 +52,7 @@ const std::string LINEANDHOME = "LINEANDHOME";
 const std::string OUTERPERIM = "OUTERPERIM";
 const std::string HOVERTEST = "HOVERTEST";
 const std::string CAMERATEST = "CAMERATEST";
+const std::string LANDINGTEST = "LANDINGTEST";
 
 /**
  * class to contain the functionality of the mission node.
@@ -469,6 +470,9 @@ void MissionNode::takeoff() {
             _start = time(0);
             _STATE = LOITER;
         }
+        else if (_MISSIONTYPE == LANDINGTEST) {
+            _STATE = GOHOME;
+        }
         else {
             _STATE = Perimeter_Search;
         }
@@ -806,9 +810,9 @@ int main(int argc, char **argv) {
 	// get parameters from the launch file which define some mission
 	// settings
 	ros::NodeHandle private_nh("~");
-        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
+        // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST, LANDINGTEST
 
-        std::string mission_type = OUTERPERIM;
+        std::string mission_type = LANDINGTEST;
         float target_v = 20.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
