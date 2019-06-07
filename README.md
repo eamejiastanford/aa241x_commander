@@ -13,6 +13,7 @@ This README is also a bit of a guide to help you get started and running the ele
  - [Getting Started](#getting-started) - help you get everything up and running 
  - [Nodes](#nodes) - details on the nodes that exist within the skeleton code
  - [Offboard Control](#offboard-control) - details on how to configure your Pixhawk for `OFFBOARD` control (the level flight mode required to give control to ROS)
+ - [Frames of Reference](#frames-of-reference) - details on the several different frames needed when flying at Lake Lag
  - [Recommendations](#recommendations) - some recommendations and hints for how to structure your code as your mission elements get more complex.
 
 ## Getting Started ##
@@ -179,6 +180,24 @@ cd ~/catkin_ws/
 source devel/setup.bash
 roslaunch aa241x_mission mavros_pixhawk.launch
 ```
+
+## Frames of Reference ##
+
+There are 3 frames at play when flying at Lake Lag:
+
+ - **Geodetic (GPS coordinates)** - The landing location and center of the lake are defined in this frame and then converted to some of the different frames below for you.  Your interaction with this frame is only a launch file level (specifying the lat/lon of the landing position), the `aa241x_mission` node handles all the conversions needed between the geodetic coordinate system and the Lake Lag local frame.
+
+ - **Pixhawk Local** - The ENU (or NED if looking at the pixhawk logs) frame who's origin is at the location where the drone first receives a GPS fix, as specified by that first fix GPS coordinate.  This frame is used more as an intermediate frame to help getting into the Lake Lag frame and you should not be using this frame directly.
+
+ - **Lake Lag** - the ENU frame who's origin is at the center of the Lake, as specified by GPS coordinates.  There are 2 different ways to get the Lake Lag frame coordinates, which are discussed in more detail below.
+
+### Getting Lake Lag Frame Coordinates ###
+
+We have provided you with 2 different methods of getting the Lake Lag frame coordinates.  **NOTE: you should be using the offset method during the search phase of the mission, the second method listed below is only to help you get to the landing platform if you are having trouble getting to the GPS position of the landing platform.**
+
+ - **as an offset to the pixhawk local frame** - This is the method that has been provided since the beginning of the class that you should all be using already.  Let's call *P_lake_lag* the ENU position of the drone in the Lake Lag ENU frame, *P_pixhawk* the ENU position of the drone in the pixhawk local frame, and *offset* the ENU offset as provided to you [in the `mission_state` topic](https://github.com/aa241x/aa241x_mission#publishes).  Therefore, using the offset we have *P_lake_lag* = *P_pixhawk* + *offset*.  **NOTE: for this to provide the most accurate motion in the world frame, you will want to wait until you have 10+ satellites (viewed in QGroundControl) before starting the script and you will need to start the script from where the drone was turned on!  If you move the drone between when you turned the drone on and when you start the script, there will be additional biases which are not directly accounted for.**
+
+ - **directly computed from the GPS position** - This is a new addition supported in the most recent version of `aa241x_mission`.  The `aa241x_mission` node publishes the Lake Lag frame ENU position computed from the GPS position (and the known GPS position of the center of the lake) to a topic called `geodetic_based_lake_lag_pose` (see [the documentation for more details](https://github.com/aa241x/aa241x_mission#publishes)).  This removes any possible error sources that *P_pixhawk* origin might have when going from the lake lag local frame to GPS coordinates, so you may have better performance getting to the landing platform by using the ENU position in the `geodetic_based_lake_lag_pose` topic when moving to the landing platform.  Mathemtically, with this topic we have *P_lake_lag_geodetic_based* = *geodetic transformation of current GPS position and known Lake Lag center GPS position to ENU*, which should = *P_lake_lag* = *P_pixhawk* + *offset* if *P_pixhawk* has no error between it and the geodetic coordinate system.  **NOTE: if you takeoff where you turn on your drone and you wait for 10+ satellites in view, the offset method above should be very similar to the position published in this topic.  This topic has been added just as a backup if you feel that you are having trouble getting to the GPS coordinates of the landing platform properly.**
 
 
 ## Recommendations ##
