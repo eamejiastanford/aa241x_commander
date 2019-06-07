@@ -30,6 +30,7 @@
 #include <std_msgs/String.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/Bool.h>
+#include <random>
 
 #include <aa241x_mission/RequestLandingPosition.h>
 
@@ -296,9 +297,12 @@ int VisionNode::run() {
 
                 // Publish the vector from the drone to the april tag (camera frame)
             simTagPosition();
-            _tag_relative_x_msg.data = _xr;
-            _tag_relative_y_msg.data = _yr;
-            _tag_relative_z_msg.data = _zr;
+            std::default_random_engine generator;
+            std::normal_distribution<float> noise(0, 1.0);
+            _tag_relative_x_msg.data = _xr + noise(generator);
+            //_tag_relative_x_msg.data = _xr;
+            _tag_relative_y_msg.data = _yr+ noise(generator);
+            _tag_relative_z_msg.data = _zr+ noise(generator);
 
             _tag_relative_x_pub.publish(_tag_relative_x_msg);
             _tag_relative_y_pub.publish(_tag_relative_y_msg);

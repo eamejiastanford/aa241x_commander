@@ -125,6 +125,7 @@ private:
         float _tag_rel_y = 0.0f; // Camera y
         float _tag_rel_z = 0.0f; // Camera z
         bool _tag_found = false;
+        bool _averaging_tag_pos = false;
 
         // Position of april tag from the lake origin
         float _tag_abs_x = 0.0f; // N
@@ -143,8 +144,11 @@ private:
 
         // Extra data for state machine
         float _target_time = 0.0;
+        float _loop_closure_time = 0.0;
         time_t _start;
         time_t _end;
+        time_t _loop_start;
+        time_t _loop_end;
         float _dAlongLine = 0;
 
 	// subscribers
@@ -541,8 +545,9 @@ int MissionNode::run() {
                     if (_MISSIONTYPE == HOVERTEST) {
                         _STATE = GOHOME;
                     }
-                    else if (_tag_found == true){
-                        _STATE == Navigate_to_land;
+                    else if ((_tag_found == true) && (_averaging_tag_pos == true)){
+                        _loop_start = time(NULL);
+                        _STATE = Navigate_to_land;
                     }
                     else {
                         _STATE = Perimeter_Search;
@@ -594,13 +599,26 @@ int MissionNode::run() {
                 _tag_abs_y_pub.publish(_tag_abs_y_msg);
                 _tag_abs_z_pub.publish(_tag_abs_z_msg);
 
-                if (abs(_xc - _tag_abs_x) < 0.1 && abs(_yc - _tag_abs_y) < 0.1){
+                _loop_end = time(NULL);
+
+                float _loop_closure_time = _loop_end - _loop_start;
+                if (_averaging_tag_pos == false) {
+                    _averaging_tag_pos = true;
+                    _target_time = 10.0; // sets target time for hover over the April tag
+                    _start = time(NULL);
+                    _STATE = LOITER;
+                }
+                else if (abs(_xc - _tag_abs_x) < 0.1 && abs(_yc - _tag_abs_y) < 0.1){
                     _STATE = LAND;
+                }
+                else if (_loop_closure_time <= 10.0) {
+                // allows controls to close loop
                 }
                 else if (_tag_found == true){
                     // currently this will loiter on every loop that sees a tag; needs to be changed to wait until drone navigates
                     // to where it thinks the final landing location is
                     _target_time = 10.0; // sets target time for hover over the April tag
+                    _start = time(NULL);
                     _STATE = LOITER;
                 }
             }
@@ -650,10 +668,10 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
-        std::string mission_type = CAMERATEST;
+        std::string mission_type = LINEANDHOME;
         float target_v = 4.0;
-        float flight_alt = 45.0;
-        float loiter_t = 32.0;
+        float flight_alt = 35.0;
+        float loiter_t = 38.0;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t);
