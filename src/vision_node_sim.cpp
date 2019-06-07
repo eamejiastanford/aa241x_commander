@@ -34,7 +34,8 @@
 
 #include <aa241x_mission/RequestLandingPosition.h>
 
-const std::string Navigate_to_land = "Navigate_to_land";
+const std::string MINISEARCH = "MINISEARCH";
+const std::string Hover_Search = "Hover_Search";
 
 
 using namespace std;
@@ -245,7 +246,7 @@ int VisionNode::run() {
     while (ros::ok()) {
 
         // Check if we should use the camera..
-        if(true){//(_STATE == Navigate_to_land) {
+        if (_STATE == Hover_Search || _STATE == MINISEARCH ) {
 
 //            // open the camera
 //            ROS_INFO("opening camera");

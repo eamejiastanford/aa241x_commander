@@ -35,6 +35,7 @@ const std::string Navigate_to_land = "Navigate_to_land";
 const std::string Perimeter_Search = "Perimeter_Search";
 const std::string CAMERA_TEST = "CAMERA_TEST";
 const std::string MINISEARCH = "MINISEARCH";
+const std::string Hover_Search = "Hover_Search";
 
 
 /**
@@ -135,6 +136,10 @@ private:
         float _current_lat = 0.0f;
         float _current_lon = 0.0f;
 
+        // Loiter
+        float _xLoiter = 0;
+        float _yLoiter = 0;
+
         // actuator saturation
         float _vxMax;
         float _vyMax;
@@ -165,6 +170,8 @@ private:
         ros::Subscriber _tag_abs_z_sub;
         ros::Subscriber _e_home_sub;
         ros::Subscriber _n_home_sub;
+        ros::Subscriber _xLoiter_sub;
+        ros::Subscriber _yLoiter_sub;
 
         // publishers
         ros::Publisher _cmd_pub;
@@ -184,6 +191,10 @@ private:
         ros::ServiceClient _landing_loc_client;
 
         // callbacks
+
+        void xLoiterCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void yLoiterCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void stateCallback(const mavros_msgs::State::ConstPtr& msg);
 
@@ -251,6 +262,8 @@ private:
 
         void miniSearchControl(geometry_msgs::Vector3& vel);
 
+        void hoverSearchControl(geometry_msgs::Vector3& vel);
+
         void tag_foundCallback(const std_msgs::Bool::ConstPtr& msg);
         void tag_abs_xCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg);
@@ -276,6 +289,8 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _flight_alt_sub = _nh.subscribe<std_msgs::Float64>("flight_alt", 10, &ControlNode::flightAltCallback, this);
         _mission_state_sub = _nh.subscribe<aa241x_mission::MissionState>("mission_state", 10, &ControlNode::missionStateCallback, this);
         _target_v_sub = _nh.subscribe<std_msgs::Float64>("speed", 10, &ControlNode::targetVCallback, this);
+        _xLoiter_sub = _nh.subscribe<std_msgs::Float64>("xLoiter", 10, &ControlNode::xLoiterCallback, this);
+        _yLoiter_sub = _nh.subscribe<std_msgs::Float64>("yLoiter", 10, &ControlNode::yLoiterCallback, this);
 
         // April Tag Things:
         _tag_found_sub = _nh.subscribe<std_msgs::Bool>("tagFound", 10, &ControlNode::tag_foundCallback, this);
@@ -310,6 +325,14 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         // service
         _landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
 
+}
+
+void ControlNode::xLoiterCallback(const std_msgs::Float64::ConstPtr& msg) {
+    _xLoiter = msg->data;
+}
+
+void ControlNode::yLoiterCallback(const std_msgs::Float64::ConstPtr& msg) {
+    _yLoiter = msg->data;
 }
 
 void ControlNode::stateCallback(const mavros_msgs::State::ConstPtr& msg) {
@@ -650,6 +673,23 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
 
 }
 
+// Loiters and looks for apriltags
+void ControlNode::hoverSearchControl(geometry_msgs::Vector3& vel) {
+
+    float kp = 1.0;
+    float kpz = 1.0;
+    float landing_offset = 0.0;
+
+    // Commnad velocities to control position
+    vel.x = -kp * (_xc - _landing_e); // Hold position landing position
+    vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
+    vel.z  = -kpz * (_zc - (3.0+landing_offset)); // Hold altitude
+
+    // Saturate velocities
+    saturateVelocities(vel);
+
+}
+
 void ControlNode::lineControl(geometry_msgs::Vector3& vel) {
     // Compute tangential distance to line
     float dperp = sin(_thetaLine)*(_yLine-_yc) + cos(_thetaLine)*(_xLine-_xc);
@@ -717,12 +757,12 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 
     float kp = 1.0;
     float kpz = 1.0;
+    float landing_offset = 0.0;
 
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (3.0+_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
-
+    vel.z  = -kpz * (_zc - (3.0+landing_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -732,25 +772,25 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float kpx = 1.0;
     float kpy = 1.0;
     float kpz = 1.0;
+    float landing_offset = 0.0;
 
     // Command velocities to control position
-    if (_tag_found == true ){
-        vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
-        vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-        vel.z = 0.0;
-    }
+    vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
+    vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
+    vel.z = -kpz * (_zc - (3.0+landing_offset) );
 
     // Saturate velocities
     saturateVelocities(vel);
 }
 
 void ControlNode::loiterControl(geometry_msgs::Vector3& vel) {
+    float kp = 0.1;
     float kpz = 1.0;
 
     // Commnad velocities to control position
-    vel.x = 0.0; // Don't translate laterally
-    vel.y = 0.0; // Don't translate laterally
-    vel.z = 0.0; // Don't translate vertically
+    vel.x = -kp * (_xc - _xLoiter); // Hold loiter position
+    vel.y = -kp * (_yc - _yLoiter); // Hold loiter position
+    vel.z = -kpz * (_zc - _flight_alt); // Don't translate vertically
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -878,6 +918,9 @@ int ControlNode::run() {
                 }
                 else if (_STATE == MINISEARCH) {
                     miniSearchControl(vel);
+                }
+                else if (_STATE == Hover_Search) {
+                    hoverSearchControl(vel);
                 }
 
                 // Assign velocity control
