@@ -739,13 +739,6 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
         vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
         vel.z = 0.0;
     }
-    else {
-        // Localized search to find April Tag location
-        // for now it will just stay in hover mode forever
-        vel.x = 0.0;
-        vel.y = 0.0;
-        vel.z = 0.0;
-    }
 
     // Saturate velocities
     saturateVelocities(vel);
