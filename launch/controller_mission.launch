@@ -19,6 +19,10 @@
 		<arg name="landing_lon" value="-122.174234" />
 	</include>
 
+	<!-- the mission node -->
+	<node pkg="aa241x_commander" type="mission_node" name="mission_node" output="screen">
+    </node> 
+
 	<!-- the control node -->
 	<node pkg="aa241x_commander" type="control_node" name="control_node" output="screen">
     </node>
@@ -26,10 +30,6 @@
 	<!-- the vision node -->
 	<node pkg="aa241x_vision" type="vision_node" name="vision_node" output="screen">
     </node>
-
-	<!-- the mission node -->
-	<node pkg="aa241x_commander" type="mission_node" name="mission_node" output="screen">
-    </node> 
 
 	<!-- logging -->
 	<include file="$(find aa241x_commander)/launch/log_position.launch" />
