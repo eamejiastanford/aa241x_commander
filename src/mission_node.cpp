@@ -609,7 +609,7 @@ int MissionNode::run() {
             }
             else if (_STATE == DROP_ALT){
                 // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
-                float landing_offset = _u_offset; // for now, land at the starting location
+                float landing_offset = 0.0; // _u_offset; // for now, land at the starting location
                 if (abs(_zc - (3.0+landing_offset)) < 0.1 ){ // For landing at the landing location
                     _STATE = Navigate_to_land;
                     //_STATE = LAND;
@@ -714,14 +714,13 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
-        std::string mission_type = SPIRAL;
-        float target_v = 4.0;
+        std::string mission_type =OUTERPERIM;
+        float target_v = 6.0;
         float flight_alt = 35.0;
-        float loiter_t = 38.0;
+        float loiter_t = 20.0;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t);
 
 	// run the node
-	return node.run();
-}
+	return node.run();}

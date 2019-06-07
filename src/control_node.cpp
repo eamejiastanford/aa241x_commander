@@ -699,7 +699,7 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     // Command velocities to control position
     vel.x = 0.0; // Don't translate laterally
     vel.y = 0.0; // Don't translate laterally
-    vel.z = -kpz * (_zc - _z0); // Fix this with offsets
+    vel.z = -kpz * (_zc - 0.0); //-kpz * (_zc - _z0); // Fix this with offsets
 
     // Saturate velocities
     saturateVelocities(vel);
