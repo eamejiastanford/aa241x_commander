@@ -122,7 +122,7 @@ private:
         std::vector<float> _e;
 
         // Perimeter search variables
-        int _angle = 50;
+        int _angle = -10;
         int _count = 0;
         int _cycle = 0;
         float _outer_radius = 160.0;
@@ -576,9 +576,11 @@ void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
     float diameter_search = (5.0/7.0)*(_flight_alt)+28.57;
     float radius_search = diameter_search/2.0;
 
+    float shifted_angle = _angle + 180;
+
     // Perform sweep of circle outer perimeter:
-    float xL = (_radius-radius_search)*cos(_angle*M_PI/180.0);
-    float yL = (_radius-radius_search)*sin(_angle*M_PI/180.0);
+    float xL = (_radius-radius_search)*cos(shifted_angle*M_PI/180.0);
+    float yL = (_radius-radius_search)*sin(shifted_angle*M_PI/180.0);
 
     // Distance between point and current location
     float xpt = xL-_xc;

@@ -715,9 +715,9 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
         std::string mission_type = SPIRAL;
-        float target_v = 4.0;
+        float target_v = 8.0;
         float flight_alt = 35.0;
-        float loiter_t = 38.0;
+        float loiter_t = 5.0;//38.0;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t);
