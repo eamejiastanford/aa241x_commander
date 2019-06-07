@@ -34,6 +34,7 @@ const std::string DROP_ALT = "DROP_ALT";
 const std::string Navigate_to_land = "Navigate_to_land";
 const std::string Perimeter_Search = "Perimeter_Search";
 const std::string CAMERA_TEST = "CAMERA_TEST";
+const std::string MINISEARCH = "MINISEARCH";
 
 
 /**
@@ -145,6 +146,9 @@ private:
         float _tag_abs_y = 0.0f;
         float _tag_abs_z = 0.0f;
 
+        float _e_home = 0.0;
+        float _n_home = 0.0;
+
         // subscribers
         ros::Subscriber _state_sub;                 // the current state of the pixhawk
         ros::Subscriber _local_pos_sub;             // local position information
@@ -159,6 +163,8 @@ private:
         ros::Subscriber _tag_abs_x_sub;
         ros::Subscriber _tag_abs_y_sub;
         ros::Subscriber _tag_abs_z_sub;
+        ros::Subscriber _e_home_sub;
+        ros::Subscriber _n_home_sub;
 
         // publishers
         ros::Publisher _cmd_pub;
@@ -243,10 +249,15 @@ private:
 
         void loiterControl(geometry_msgs::Vector3& vel);
 
+        void miniSearchControl(geometry_msgs::Vector3& vel);
+
         void tag_foundCallback(const std_msgs::Bool::ConstPtr& msg);
         void tag_abs_xCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_zCallback(const std_msgs::Float64::ConstPtr& msg);
+
+        void e_homeCallback(const std_msgs::Float64::ConstPtr& msg);
+        void n_homeCallback(const std_msgs::Float64::ConstPtr& msg);
 
 };
 
@@ -271,6 +282,8 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _tag_abs_x_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_x", 10, &ControlNode::tag_abs_xCallback, this);
         _tag_abs_y_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_y", 10, &ControlNode::tag_abs_yCallback, this);
         _tag_abs_z_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_z", 10, &ControlNode::tag_abs_zCallback, this);
+        _e_home_sub = _nh.subscribe<std_msgs::Float64>("e_home", 10, &ControlNode::e_homeCallback, this);
+        _n_home_sub = _nh.subscribe<std_msgs::Float64>("n_home", 10, &ControlNode::n_homeCallback, this);
 
         // advertise the published detailed
 
@@ -416,6 +429,12 @@ void ControlNode::tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg){
 
 void ControlNode::tag_abs_zCallback(const std_msgs::Float64::ConstPtr& msg){
     _tag_abs_z = msg->data;
+}
+void ControlNode::e_homeCallback(const std_msgs::Float64::ConstPtr& msg){
+    _e_home = msg->data;
+}
+void ControlNode::n_homeCallback(const std_msgs::Float64::ConstPtr& msg){
+    _n_home = msg->data;
 }
 
 // Computes euler angles from quaternions. Sequence is yaw, pitch, roll
@@ -593,6 +612,42 @@ void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
 
 }
 
+void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
+
+    float radius_search = 1.5;
+
+    // Perform sweep of circle outer perimeter:
+    float xL = (radius_search)*cos(_angle*M_PI/180.0) + _xc;
+    float yL = (radius_search)*sin(_angle*M_PI/180.0) + _yc;
+
+    // Distance between point and current location
+    float xpt = xL-_xc;
+    float ypt = yL-_yc;
+    float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
+
+    // Define gains for point to point travel
+    float kpx = 0.8;
+    float kpy = 0.8;
+    float kpz = 1.0;
+
+    // Proportional position control
+    vel.x = -kpx * (_xc - xL);
+    vel.y = -kpy * (_yc - yL);
+    vel.z = 0.0;
+
+    // Saturate velocities
+    saturateVelocities(vel);
+
+    // If it reaches the objective point, switch points to acquire next point trajectory
+    if (pt_dist <= 15.0){
+        _angle = _angle+5;
+    }
+    if (_angle == 375){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
+        _angle = 15;
+    }
+
+}
+
 void ControlNode::lineControl(geometry_msgs::Vector3& vel) {
     // Compute tangential distance to line
     float dperp = sin(_thetaLine)*(_yLine-_yc) + cos(_thetaLine)*(_xLine-_xc);
@@ -630,8 +685,8 @@ void ControlNode::goHomeControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Define controls on position
-    vel.x = -kpx * (_xc - _landing_e);
-    vel.y = -kpy * (_yc - _landing_n);
+    vel.x = -kpx * (_xc - _e_home);
+    vel.y = -kpy * (_yc - _n_home);
     vel.z = -kpz * (_zc - _flight_alt);
 
     // Saturate velocities
@@ -825,6 +880,9 @@ int ControlNode::run() {
                     vel.x = 0;
                     vel.y = 0;
                     vel.z = 0;
+                }
+                else if (_STATE == MINISEARCH) {
+                    miniSearchControl(vel);
                 }
 
                 // Assign velocity control

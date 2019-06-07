@@ -43,6 +43,7 @@ const std::string Pt_Trajectory = "Pt_Trajectory";
 const std::string Perimeter_Search = "Perimeter_Search";
 const std::string Navigate_to_land = "Navigate_to_land";
 const std::string CAMERA_TEST = "CAMERA_TEST";
+const std::string MINISEARCH = "MINISEARCH";
 
 // Define possible missions
 const std::string SPIRAL = "SPIRAL";
@@ -98,6 +99,8 @@ private:
         std_msgs::Float64 _tag_abs_x_msg;
         std_msgs::Float64 _tag_abs_y_msg;
         std_msgs::Float64 _tag_abs_z_msg;
+        std_msgs::Float64 _n_home_msg;
+        std_msgs::Float64 _e_home_msg;
 
 
 
@@ -126,6 +129,8 @@ private:
         float _tag_rel_z = 0.0f; // Camera z
         bool _tag_found = false;
         bool _averaging_tag_pos = false;
+        bool _land_anyways_flag = false;
+        bool _final_landing_mode = false;
 
         // Position of april tag from the lake origin
         float _tag_abs_x = 0.0f; // N
@@ -149,6 +154,8 @@ private:
         time_t _end;
         time_t _loop_start;
         time_t _loop_end;
+        time_t _full_land_t_start;
+        time_t _full_land_t_end;
         float _dAlongLine = 0;
 
 	// subscribers
@@ -186,6 +193,8 @@ private:
         ros::Publisher _tag_abs_x_pub;
         ros::Publisher _tag_abs_y_pub;
         ros::Publisher _tag_abs_z_pub;
+        ros::Publisher _n_home_pub;
+        ros::Publisher _e_home_pub;
 
 	// callbacks
 
@@ -288,6 +297,9 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _tag_abs_x_pub = _nh.advertise<std_msgs::Float64>("tag_abs_x", 10);
         _tag_abs_y_pub = _nh.advertise<std_msgs::Float64>("tag_abs_y", 10);
         _tag_abs_z_pub = _nh.advertise<std_msgs::Float64>("tag_abs_z", 10);
+        _e_home_pub = _nh.advertise<std_msgs::Float64>("e_home", 10);
+        _n_home_pub = _nh.advertise<std_msgs::Float64>("n_home", 10);
+
 }
 
 // Records the x measure of the position vector from the drone camera to the april tag (landing location)
@@ -545,7 +557,7 @@ int MissionNode::run() {
                     if (_MISSIONTYPE == HOVERTEST) {
                         _STATE = GOHOME;
                     }
-                    else if ((_tag_found == true) && (_averaging_tag_pos == true)){
+                    else if (_averaging_tag_pos == true){
                         _loop_start = time(NULL);
                         _STATE = Navigate_to_land;
                     }
@@ -556,28 +568,43 @@ int MissionNode::run() {
             }
             else if(_STATE == GOHOME) {
                 // Check if we are close enough to landing location
-                if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
-                    _STATE = DROP_ALT;
+                if (_final_landing_mode == false) {
+                    _e_home_msg.data = _landing_e;
+                    _e_home_pub.publish(_e_home_msg);
+                    _n_home_msg.data = _landing_n;
+                    _n_home_pub.publish(_n_home_msg);
+                    if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
+                        _STATE = DROP_ALT;
 
-                    for( int index = 0; index < _id_total.size(); ++index) {
-                        // Pull the current id to check
-                        int id_current = _id_total[index];
-                        vector<float> n_current = _n_total[index];
-                        vector<float> e_current = _e_total[index];
-                        float n_total = 0.0;
-                        float e_total = 0.0;
-                        for(int i=0; i<n_current.size(); ++i) {
-                                n_total += n_current[i];
-                                e_total += e_current[i];
-                        }
-                        float n_avg = n_total/n_current.size();
-                        float e_avg = e_total/e_current.size();
-                        _person_found_msg.header.stamp = ros::Time::now();
-                        _person_found_msg.id = id_current;
-                        _person_found_msg.n = n_avg;
-                        _person_found_msg.e = e_avg;
-                        _person_found_pub.publish(_person_found_msg);
-                     }
+                        for( int index = 0; index < _id_total.size(); ++index) {
+                            // Pull the current id to check
+                            int id_current = _id_total[index];
+                            vector<float> n_current = _n_total[index];
+                            vector<float> e_current = _e_total[index];
+                            float n_total = 0.0;
+                            float e_total = 0.0;
+                            for(int i=0; i<n_current.size(); ++i) {
+                                    n_total += n_current[i];
+                                    e_total += e_current[i];
+                            }
+                            float n_avg = n_total/n_current.size();
+                            float e_avg = e_total/e_current.size();
+                            _person_found_msg.header.stamp = ros::Time::now();
+                            _person_found_msg.id = id_current;
+                            _person_found_msg.n = n_avg;
+                            _person_found_msg.e = e_avg;
+                            _person_found_pub.publish(_person_found_msg);
+                         }
+                    }
+                }
+                else if (_final_landing_mode == true) {
+                    _e_home_msg.data = _tag_abs_x;
+                    _e_home_pub.publish(_e_home_msg);
+                    _n_home_msg.data = _tag_abs_y;
+                    _n_home_pub.publish(_n_home_msg);
+                    if (abs(_xc - _tag_abs_x) <= .1 && abs(_yc - _tag_abs_y) <= .1) {
+                        _STATE = Navigate_to_land;
+                    }
                 }
             }
             else if (_STATE == DROP_ALT){
@@ -600,6 +627,8 @@ int MissionNode::run() {
                 _tag_abs_z_pub.publish(_tag_abs_z_msg);
 
                 _loop_end = time(NULL);
+                _full_land_t_start = time(NULL);
+
 
                 float _loop_closure_time = _loop_end - _loop_start;
                 if (_averaging_tag_pos == false) {
@@ -608,18 +637,35 @@ int MissionNode::run() {
                     _start = time(NULL);
                     _STATE = LOITER;
                 }
-                else if (abs(_xc - _tag_abs_x) < 0.1 && abs(_yc - _tag_abs_y) < 0.1){
-                    _STATE = LAND;
+                else if (abs(_xc - _tag_abs_x) < 0.2 && abs(_yc - _tag_abs_y) < 0.2){
+                    if (_tag_found == true) {
+                        _STATE = LAND;
+                     }
+                    else if ((_tag_found == false) && (_land_anyways_flag == true)) {
+                        _STATE = LAND;
+                    }
+                    else if ((_tag_found == false) && (_land_anyways_flag == false)) {
+                        _STATE = MINISEARCH;
+                    }
                 }
                 else if (_loop_closure_time <= 10.0) {
                 // allows controls to close loop
                 }
-                else if (_tag_found == true){
-                    // currently this will loiter on every loop that sees a tag; needs to be changed to wait until drone navigates
-                    // to where it thinks the final landing location is
-                    _target_time = 10.0; // sets target time for hover over the April tag
-                    _start = time(NULL);
-                    _STATE = LOITER;
+                else if ((_tag_found == false) && (_land_anyways_flag == false)) {
+                    _STATE = MINISEARCH;
+                }
+            }
+            else if (_STATE == MINISEARCH) {
+                _full_land_t_end = time(NULL);
+                float _total_search_time = _full_land_t_end - _full_land_t_start;
+                if (_tag_found  == true) {
+                    _STATE = GOHOME;
+                    _final_landing_mode = true;
+                }
+                else if (_total_search_time >= 50.0) {
+                    _land_anyways_flag = true;
+                    _STATE = GOHOME;
+                    _final_landing_mode = true;
                 }
             }
             else if(_STATE == LINE) {
@@ -668,7 +714,7 @@ int main(int argc, char **argv) {
 	// settings
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST
-        std::string mission_type = LINEANDHOME;
+        std::string mission_type = SPIRAL;
         float target_v = 4.0;
         float flight_alt = 35.0;
         float loiter_t = 38.0;

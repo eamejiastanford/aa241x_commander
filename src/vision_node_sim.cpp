@@ -238,6 +238,7 @@ int VisionNode::run() {
     } else {
          ROS_ERROR("unable to get landing location in Lake Lag frame!");
     }
+    float test_value = 1.0;
 
     // loop while the node should be running
     while (ros::ok()) {
@@ -265,12 +266,13 @@ int VisionNode::run() {
 //            zarray_t *detections = apriltag_detector_detect(td, &im);
 //            ROS_INFO("%d tags detected", zarray_size(detections));
 
-            if (true){
+            //if (test_value == 1.0){
+                //test_value = 2.0;
                 _tag_found_msg.data = true;
-            }
-            else{
-                _tag_found_msg.data = false;
-            }
+            //}
+            //else{
+               // _tag_found_msg.data = false;
+           // }
 
 //            for (int i = 0; i < zarray_size(detections); i++) {
 //                apriltag_detection_t *det;
