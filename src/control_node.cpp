@@ -36,6 +36,7 @@ const std::string Perimeter_Search = "Perimeter_Search";
 const std::string CAMERA_TEST = "CAMERA_TEST";
 const std::string MINISEARCH = "MINISEARCH";
 const std::string Hover_Search = "Hover_Search";
+const std::string GOHOME_LAND = "GOHOME_LAND";
 
 
 /**
@@ -59,8 +60,6 @@ public:
 
 
 private:
-
-
         // node handler
         ros::NodeHandle _nh;
 
@@ -69,7 +68,6 @@ private:
         float _xLine = 0.0f;
         float _yLine = 0.0f;
         float _vDes = 0.0f;
-
 
         // data
         mavros_msgs::State _current_state;
@@ -81,6 +79,7 @@ private:
         // landing position
         float _landing_e = 0.0f;
         float _landing_n = 0.0f;
+        float _tag_Alt = 0.0f;
 
         // Physical state variables
         float _xc;
@@ -128,6 +127,7 @@ private:
         int _cycle = 0;
         float _outer_radius = 160.0;
         float _radius = _outer_radius; //160
+        float radius_Alt_search = 0.5;
 
         // offset information
         float _e_offset = 0;
@@ -172,6 +172,7 @@ private:
         ros::Subscriber _n_home_sub;
         ros::Subscriber _xLoiter_sub;
         ros::Subscriber _yLoiter_sub;
+        ros::Subscriber _tag_Alt_sub;
 
         // publishers
         ros::Publisher _cmd_pub;
@@ -252,6 +253,8 @@ private:
 
         void goHomeControl(geometry_msgs::Vector3& vel);
 
+        void goHomeLandControl(geometry_msgs::Vector3& vel);
+
         void landControl(geometry_msgs::Vector3& vel);
 
         void dropAltControl(geometry_msgs::Vector3& vel);
@@ -268,6 +271,7 @@ private:
         void tag_abs_xCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_zCallback(const std_msgs::Float64::ConstPtr& msg);
+        void tagAltCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void e_homeCallback(const std_msgs::Float64::ConstPtr& msg);
         void n_homeCallback(const std_msgs::Float64::ConstPtr& msg);
@@ -299,6 +303,7 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _tag_abs_z_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_z", 10, &ControlNode::tag_abs_zCallback, this);
         _e_home_sub = _nh.subscribe<std_msgs::Float64>("e_home", 10, &ControlNode::e_homeCallback, this);
         _n_home_sub = _nh.subscribe<std_msgs::Float64>("n_home", 10, &ControlNode::n_homeCallback, this);
+        _tag_Alt_sub = _nh.subscribe<std_msgs::Float64>("tag_Alt", 10, &ControlNode::tagAltCallback, this);
 
         // advertise the published detailed
 
@@ -459,6 +464,10 @@ void ControlNode::e_homeCallback(const std_msgs::Float64::ConstPtr& msg){
 void ControlNode::n_homeCallback(const std_msgs::Float64::ConstPtr& msg){
     _n_home = msg->data;
 }
+void ControlNode::tagAltCallback(const std_msgs::Float64::ConstPtr& msg){
+    _tag_Alt = msg->data;
+}
+
 
 // Computes euler angles from quaternions. Sequence is yaw, pitch, roll
 void ControlNode::toEulerAngle(const float q[4])
@@ -639,11 +648,9 @@ void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
 
-    float radius_search = 1.5;
-
     // Perform sweep of circle outer perimeter:
-    float xL = (radius_search)*cos(_angle*M_PI/180.0) + _xc;
-    float yL = (radius_search)*sin(_angle*M_PI/180.0) + _yc;
+    float xL = (radius_Alt_search)*cos(_angle*M_PI/180.0) + _landing_e;
+    float yL = (radius_Alt_search)*sin(_angle*M_PI/180.0) + _landing_n;
 
     // Distance between point and current location
     float xpt = xL-_xc;
@@ -651,24 +658,25 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
     float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
 
     // Define gains for point to point travel
-    float kpx = 0.8;
-    float kpy = 0.8;
+    float kpx = 1.0;
+    float kpy = 1.0;
     float kpz = 1.0;
 
     // Proportional position control
     vel.x = -kpx * (_xc - xL);
     vel.y = -kpy * (_yc - yL);
-    vel.z = 0.0;
+    vel.z = -kpz * (_zc - _tag_Alt);
 
     // Saturate velocities
     saturateVelocities(vel);
 
     // If it reaches the objective point, switch points to acquire next point trajectory
-    if (pt_dist <= 15.0){
+    if (pt_dist <= 0.5){
         _angle = _angle+5;
     }
-    if (_angle == 375){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
-        _angle = 15;
+    if (_angle >= 360){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
+        _angle = 0;
+        radius_Alt_search = radius_Alt_search + 1.0;
     }
 
 }
@@ -683,7 +691,7 @@ void ControlNode::hoverSearchControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (6.0+landing_offset)); // Hold altitude
+    vel.z  = -kpz * (_zc - (_tag_Alt)); // Hold altitude
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -735,12 +743,39 @@ void ControlNode::goHomeControl(geometry_msgs::Vector3& vel) {
     saturateVelocities(vel);
 }
 
-void ControlNode::landControl(geometry_msgs::Vector3& vel) {
+void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
+
+    // Define gains for going home
+    float kpx = 1.0;
+    float kpy = 1.0;
     float kpz = 1.0;
 
+    // Define controls on position
+    vel.x = -kpx * (_xc - _landing_e);
+    vel.y = -kpy * (_yc - _landing_n);
+    vel.z = -kpz * (_zc - _tag_Alt);
+
+    // Saturate velocities
+    saturateVelocities(vel);
+
+    if (abs(_xc - _landing_e) <= 0.1 && (_yc - _landing_n)){
+        vel.z = -kpz * (_zc-0.0);
+    }
+
+    // Slowing down the z-direction velocity for the last 5 meter drop
+    if (abs(vel.z) > _vzMax/4.0) {
+        vel.z = sign(vel.z) * _vzMax/4.0; // saturate vz
+    }
+}
+
+void ControlNode::landControl(geometry_msgs::Vector3& vel) {
+    float kpz = 1.0;
+    float kpx = 0.5;
+    float kpy = 0.5;
+
     // Command velocities to control position
-    vel.x = 0.0; // Don't translate laterally
-    vel.y = 0.0; // Don't translate laterally
+    vel.x = -kpx * (_xc - _tag_abs_x); // Don't translate laterally
+    vel.y = -kpx * (_yc - _tag_abs_y); // Don't translate laterally
     vel.z = -kpz * (_zc - 0.0); //-kpz * (_zc - _z0); // Fix this with offsets
 
     // Saturate velocities
@@ -757,12 +792,15 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 
     float kp = 1.0;
     float kpz = 1.0;
-    float landing_offset = 0.0;
 
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (6.0+landing_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+    vel.z  = -kpz * (_zc - (_tag_Alt)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+
+    if (abs(vel.z) > _vzMax/2.0) {
+        vel.z = sign(vel.z) * _vzMax/2.0; // saturate vz
+    }
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -772,12 +810,11 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float kpx = 1.0;
     float kpy = 1.0;
     float kpz = 1.0;
-    float landing_offset = 0.0;
 
     // Command velocities to control position
     vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
     vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-    vel.z = -kpz * (_zc - (6.0+landing_offset) );
+    vel.z = -kpz * (_zc - (_tag_Alt) );
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -898,6 +935,9 @@ int ControlNode::run() {
                 }
                 else if(_STATE == GOHOME) {
                     goHomeControl(vel);
+                }
+                else if(_STATE == GOHOME_LAND) {
+                    goHomeLandControl(vel);
                 }
                 else if( _STATE == LAND){
                     landControl(vel);

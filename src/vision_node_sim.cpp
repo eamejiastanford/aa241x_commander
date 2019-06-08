@@ -270,7 +270,7 @@ int VisionNode::run() {
 
             //if (test_value == 1.0){
                 //test_value = 2.0;
-                _tag_found_msg.data = true;
+                _tag_found_msg.data = false;
             //}
             //else{
                // _tag_found_msg.data = false;

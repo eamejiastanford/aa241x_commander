@@ -45,6 +45,7 @@ const std::string Navigate_to_land = "Navigate_to_land";
 const std::string CAMERA_TEST = "CAMERA_TEST";
 const std::string MINISEARCH = "MINISEARCH";
 const std::string Hover_Search = "Hover_Search";
+const std::string GOHOME_LAND = "GOHOME_LAND";
 
 // Define possible missions
 const std::string SPIRAL = "SPIRAL";
@@ -64,7 +65,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t);
+        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -79,11 +80,11 @@ private:
 	ros::NodeHandle _nh;
 
         std::string _MISSIONTYPE;
-
         std::string _STATE;
         float _flight_alt; // from center of lake lag
         int _n_cycles = 0;
         float _target_v = 0.0;
+        float _tag_Alt;
 
 	// data
 	mavros_msgs::State _current_state;
@@ -105,6 +106,7 @@ private:
         std_msgs::Float64 _e_home_msg;
         std_msgs::Float64 _xLoiter_msg;
         std_msgs::Float64 _yLoiter_msg;
+        std_msgs::Float64 _tag_Alt_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -213,6 +215,7 @@ private:
         ros::Publisher _e_home_pub;
         ros::Publisher _xLoiter_pub;
         ros::Publisher _yLoiter_pub;
+        ros::Publisher _tag_Alt_pub;
 
 
 	// callbacks
@@ -282,6 +285,8 @@ private:
 
         void goHome();
 
+        void goHomeLand();
+
         void perimeter();
 
         void loiter();
@@ -298,8 +303,8 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t) :
-    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t){
+MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt) :
+    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t), _tag_Alt(tag_Alt){
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -338,7 +343,7 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _n_home_pub = _nh.advertise<std_msgs::Float64>("n_home", 10);
         _xLoiter_pub = _nh.advertise<std_msgs::Float64>("xLoiter", 10);
         _yLoiter_pub = _nh.advertise<std_msgs::Float64>("yLoiter", 10);
-
+        _tag_Alt_pub = _nh.advertise<std_msgs::Float64>("tag_Alt", 10);
 
 }
 
@@ -573,7 +578,8 @@ void MissionNode::miniSearch() {
 
     // Check if we found a tag
     if(_tag_found) {
-        _STATE  = Navigate_to_land;
+        _STATE = Hover_Search;
+        _hoverStart = time(0);
 
         // Compute and publish the believed tag location
         // Updating tag absolute position in lake lag frame
@@ -586,10 +592,9 @@ void MissionNode::miniSearch() {
         _tag_abs_y_pub.publish(_tag_abs_y_msg);
         _tag_abs_z_pub.publish(_tag_abs_z_msg);
     }
-    else if(_miniEnd - _miniStart >= 10) { // Wait for timer to expire before giving up
-        _STATE = LAND;
+    else if(_miniEnd - _miniStart >= 100) { // Wait for timer to expire before giving up
+        _STATE = GOHOME_LAND;
     }
-
 }
 
 // Search for tags standing still
@@ -632,8 +637,7 @@ void MissionNode::line() {
 
 void MissionNode::dropAlt() {
     // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
-    float landing_offset = 0.0; // _u_offset; // for now, land at the starting location
-    if (abs(_zc - (6.0+landing_offset)) < 0.1 ){ // For landing at the landing location
+    if (abs(_zc - (_tag_Alt)) < 0.1 ){ // For landing at the landing location
         _STATE = Hover_Search;
         // Start a timer for the hover
         _hoverStart = time(0);
@@ -788,6 +792,9 @@ int MissionNode::run() {
             _flight_alt_msg.data = _flight_alt; // flight altitude from center of lake lag
             _flight_alt_pub.publish(_flight_alt_msg);
 
+            _tag_Alt_msg.data = _tag_Alt;
+            _tag_Alt_pub.publish(_tag_Alt_msg);
+
             // Publish drone mission state
             _droneState_msg.data = _STATE;
             _droneState_pub.publish(_droneState_msg);
@@ -816,9 +823,10 @@ int main(int argc, char **argv) {
         float target_v =4.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
+        float tag_Alt = 3.0;
 
 	// create the node
-        MissionNode node(mission_type, target_v, flight_alt, loiter_t);
+        MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt);
 
 	// run the node
 	return node.run();}
