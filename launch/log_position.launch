@@ -30,4 +30,12 @@
 				/tag_abs_y
 				/tag_abs_z" />
 
+    <node pkg="rosbag" type="record" name="drone_position"
+		args="-o $(env HOME)/rosbags/camera_bag
+                /mission_state
+				/xc
+                /yc
+                /zc
+                /geodetic_based_lake_lag_pose" />
+
 </launch>
