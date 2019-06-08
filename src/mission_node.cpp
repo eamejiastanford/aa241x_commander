@@ -102,8 +102,8 @@ private:
         std_msgs::Float64 _tag_abs_x_msg;
         std_msgs::Float64 _tag_abs_y_msg;
         std_msgs::Float64 _tag_abs_z_msg;
-        std_msgs::Float64 _n_home_msg;
-        std_msgs::Float64 _e_home_msg;
+
+
         std_msgs::Float64 _xLoiter_msg;
         std_msgs::Float64 _yLoiter_msg;
         std_msgs::Float64 _tag_Alt_msg;
@@ -223,8 +223,8 @@ private:
         ros::Publisher _tag_abs_x_pub;
         ros::Publisher _tag_abs_y_pub;
         ros::Publisher _tag_abs_z_pub;
-        ros::Publisher _n_home_pub;
-        ros::Publisher _e_home_pub;
+
+
         ros::Publisher _xLoiter_pub;
         ros::Publisher _yLoiter_pub;
         ros::Publisher _tag_Alt_pub;
@@ -354,8 +354,8 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _tag_abs_x_pub = _nh.advertise<std_msgs::Float64>("tag_abs_x", 10);
         _tag_abs_y_pub = _nh.advertise<std_msgs::Float64>("tag_abs_y", 10);
         _tag_abs_z_pub = _nh.advertise<std_msgs::Float64>("tag_abs_z", 10);
-        _e_home_pub = _nh.advertise<std_msgs::Float64>("e_home", 10);
-        _n_home_pub = _nh.advertise<std_msgs::Float64>("n_home", 10);
+
+
         _xLoiter_pub = _nh.advertise<std_msgs::Float64>("xLoiter", 10);
         _yLoiter_pub = _nh.advertise<std_msgs::Float64>("yLoiter", 10);
         _tag_Alt_pub = _nh.advertise<std_msgs::Float64>("tag_Alt", 10);
@@ -544,10 +544,10 @@ void MissionNode::goHome() {
     }
 
     // Check if we are close enough to landing location
-    _e_home_msg.data = _landing_e;
-    _e_home_pub.publish(_e_home_msg);
-    _n_home_msg.data = _landing_n;
-    _n_home_pub.publish(_n_home_msg);
+
+
+
+
     if(abs(xEst - _landing_e) <= 1.0 && abs(yEst - _landing_n) <= 1.0) {
             _STATE = DROP_ALT;
 
@@ -942,9 +942,9 @@ int main(int argc, char **argv) {
         float target_v =4.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
-        float tag_Alt = 3.0;
+        float tag_Alt = 4.0;
         float minisearch_t = 100.0;
-        bool useGPS = true;
+        bool useGPS = false;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt, useGPS, minisearch_t);

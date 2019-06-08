@@ -23,6 +23,7 @@
 	<node pkg="rosbag" type="record" name="camera"
 		args="-o $(env HOME)/rosbags/camera_bag
 				/tagFound
+				/detected_tag
 				/tag_rel_x
 				/tag_rel_y
 				/tag_rel_z
@@ -31,9 +32,9 @@
 				/tag_abs_z" />
 
     <node pkg="rosbag" type="record" name="drone_position"
-		args="-o $(env HOME)/rosbags/camera_bag
+		args="-o $(env HOME)/rosbags/drone_position_bag
                 /mission_state
-				/xc
+		/xc
                 /yc
                 /zc
                 /geodetic_based_lake_lag_pose" />
