@@ -846,17 +846,16 @@ void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
     saturateVelocities(vel);
 
     if (abs(xEst - _landing_e) <= 0.2 && abs(yEst - _landing_n) <= 0.2){
-        vel.z = -kpz * (zEst-0.0);
+        vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
     }
 
-    // Slowing down the z-direction velocity for the last 5 meter drop
-    if (abs(vel.z) > _vzMax/4.0) {
-        vel.z = sign(vel.z) * _vzMax/4.0; // saturate vz
+    // Slowing down the z-direction velocity to 0.5 m/s
+    if (abs(vel.z) > 0.5) {
+        vel.z = sign(vel.z) * 0.5; // saturate vz
     }
 }
 
 void ControlNode::landControl(geometry_msgs::Vector3& vel) {
-
     // Decide which position estimates to use
     float xEst;
     float yEst;
@@ -877,15 +876,15 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
 
     // Command velocities to control position
     vel.x = -kpx * (xEst - _tag_abs_x); // Don't translate laterally
-    vel.y = -kpx * (yEst - _tag_abs_y); // Don't translate laterally
-    vel.z = -kpz * (zEst - 0.0); //-kpz * (_zc - _z0); // Fix this with offsets
+    vel.y = -kpy * (yEst - _tag_abs_y); // Don't translate laterally
+    vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
     saturateVelocities(vel);
 
-    // Slowing down the z-direction velocity for the last 5 meter drop
-    if (abs(vel.z) > _vzMax/4.0) {
-        vel.z = sign(vel.z) * _vzMax/4.0; // saturate vz
+    // Slowing down the z-direction velocity to 0.5 m/s
+    if (abs(vel.z) > 0.5) {
+        vel.z = sign(vel.z) * 0.5; // saturate vz
     }
 
 }
