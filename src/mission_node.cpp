@@ -633,7 +633,7 @@ void MissionNode::line() {
 void MissionNode::dropAlt() {
     // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
     float landing_offset = 0.0; // _u_offset; // for now, land at the starting location
-    if (abs(_zc - (3.0+landing_offset)) < 0.1 ){ // For landing at the landing location
+    if (abs(_zc - (6.0+landing_offset)) < 0.1 ){ // For landing at the landing location
         _STATE = Hover_Search;
         // Start a timer for the hover
         _hoverStart = time(0);
@@ -813,7 +813,7 @@ int main(int argc, char **argv) {
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST, LANDINGTEST
 
         std::string mission_type = LANDINGTEST;
-        float target_v = 20.0;
+        float target_v =4.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
 

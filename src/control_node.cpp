@@ -683,7 +683,7 @@ void ControlNode::hoverSearchControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (3.0+landing_offset)); // Hold altitude
+    vel.z  = -kpz * (_zc - (6.0+landing_offset)); // Hold altitude
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -727,8 +727,8 @@ void ControlNode::goHomeControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Define controls on position
-    vel.x = -kpx * (_xc - _e_home);
-    vel.y = -kpy * (_yc - _n_home);
+    vel.x = -kpx * (_xc - _landing_e);
+    vel.y = -kpy * (_yc - _landing_n);
     vel.z = -kpz * (_zc - _flight_alt);
 
     // Saturate velocities
@@ -762,7 +762,7 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (3.0+landing_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+    vel.z  = -kpz * (_zc - (6.0+landing_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -777,7 +777,7 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     // Command velocities to control position
     vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
     vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-    vel.z = -kpz * (_zc - (3.0+landing_offset) );
+    vel.z = -kpz * (_zc - (6.0+landing_offset) );
 
     // Saturate velocities
     saturateVelocities(vel);
