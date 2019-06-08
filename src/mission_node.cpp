@@ -65,7 +65,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt);
+        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, bool useGPS, float minisearch_t);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -107,6 +107,8 @@ private:
         std_msgs::Float64 _xLoiter_msg;
         std_msgs::Float64 _yLoiter_msg;
         std_msgs::Float64 _tag_Alt_msg;
+        geometry_msgs::PoseStamped _gps_position_msg;
+        std_msgs::Bool _useGPS_msg;
 
         // Beacon current information
         std::vector<int> _id;
@@ -127,6 +129,9 @@ private:
 	float _landing_e = 0.0f;
 	float _landing_n = 0.0f;
 
+        // Time for minisearch
+        float _minisearch_t;
+
         // Position of april tag from the drone camera
         float _tag_rel_x = 0.0f; // Camera x
         float _tag_rel_y = 0.0f; // Camera y
@@ -145,6 +150,12 @@ private:
         float _xc = 0.0;
         float _yc = 0.0;
         float _zc = 0.0;
+
+        // GPS
+        float _xGPS = 0.0;
+        float _yGPS = 0.0;
+        float _zGPS = 0.0;
+        float _useGPS = false;
 
         // Loiter
         float _xLoiter;
@@ -194,6 +205,7 @@ private:
         ros::Subscriber _xc_sub;
         ros::Subscriber _yc_sub;
         ros::Subscriber _zc_sub;
+        ros::Subscriber _gps_position_sub;
 
         // TODO: add subscribers here
 
@@ -216,9 +228,11 @@ private:
         ros::Publisher _xLoiter_pub;
         ros::Publisher _yLoiter_pub;
         ros::Publisher _tag_Alt_pub;
+        ros::Publisher _useGPS_pub;
 
+        // callbacks
 
-	// callbacks
+        void gpsPositionCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
 	/**
 	 * callback for the current state of the pixhawk.
@@ -303,8 +317,8 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt) :
-    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t), _tag_Alt(tag_Alt){
+MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, bool useGPS, float minisearch_t) :
+    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t), _tag_Alt(tag_Alt), _useGPS(useGPS), _minisearch_t(minisearch_t){
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -324,6 +338,7 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _xc_sub = _nh.subscribe<std_msgs::Float64>("xc", 10, &MissionNode::xcCallback, this);
         _yc_sub = _nh.subscribe<std_msgs::Float64>("yc", 10, &MissionNode::ycCallback, this);
         _zc_sub = _nh.subscribe<std_msgs::Float64>("zc", 10, &MissionNode::zcCallback, this);
+        _gps_position_sub = _nh.subscribe<geometry_msgs::PoseStamped>("geodetic_based_lake_lag_pose", 10, &MissionNode::gpsPositionCallback, this);
 
 	// service
 	_landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
@@ -344,6 +359,15 @@ MissionNode::MissionNode(std::string mission_type, float target_v, float flight_
         _xLoiter_pub = _nh.advertise<std_msgs::Float64>("xLoiter", 10);
         _yLoiter_pub = _nh.advertise<std_msgs::Float64>("yLoiter", 10);
         _tag_Alt_pub = _nh.advertise<std_msgs::Float64>("tag_Alt", 10);
+        _useGPS_pub = _nh.advertise<std_msgs::Bool>("useGPS", 10);
+
+}
+
+void MissionNode::gpsPositionCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+    _gps_position_msg = *msg;
+    _xGPS = _gps_position_msg.pose.position.x;
+    _yGPS = _gps_position_msg.pose.position.y;
+    _zGPS = _gps_position_msg.pose.position.z;
 
 }
 
@@ -441,6 +465,21 @@ void MissionNode::rollCallback(const std_msgs::Float64::ConstPtr& msg){
 // Rotates tag position vector from camera frame to lake lag frame
 void MissionNode::rotateCameraToLagFrame() {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Relative position from camera to tag (camera frame)
     float x = _tag_rel_x;
     float y = _tag_rel_y;
@@ -458,9 +497,9 @@ void MissionNode::rotateCameraToLagFrame() {
     float bzDotnz = -cos(_pitch)*cos(_roll);
 
     // Rotate the vector and move to lake frame (Distances from center of Lake Lag)
-    _tag_abs_x = x * bxDotnx + y * byDotnx + z * bzDotnx + _xc;
-    _tag_abs_y = x * bxDotny + y * byDotny + z * bzDotny + _yc;
-    _tag_abs_z = x * bxDotnz + y * byDotnz + z * bzDotnz + _zc;
+    _tag_abs_x = x * bxDotnx + y * byDotnx + z * bzDotnx + xEst;
+    _tag_abs_y = x * bxDotny + y * byDotny + z * bzDotny + yEst;
+    _tag_abs_z = x * bxDotnz + y * byDotnz + z * bzDotnz + zEst;
 }
 
 void MissionNode::takeoff() {
@@ -489,12 +528,27 @@ void MissionNode::takeoff() {
 
 void MissionNode::goHome() {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Check if we are close enough to landing location
     _e_home_msg.data = _landing_e;
     _e_home_pub.publish(_e_home_msg);
     _n_home_msg.data = _landing_n;
     _n_home_pub.publish(_n_home_msg);
-    if(abs(_xc - _landing_e) <= 1.0 && abs(_yc - _landing_n) <= 1.0) {
+    if(abs(xEst - _landing_e) <= 1.0 && abs(yEst - _landing_n) <= 1.0) {
             _STATE = DROP_ALT;
 
             // Publish person_found data:
@@ -563,8 +617,23 @@ void MissionNode::loiter() {
 // Go to a known april tag locations
 void MissionNode::navToLand() {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Check if we are at tag position
-    if( abs(_xc - _tag_abs_x) <= 0.2 && abs(_yc - _tag_abs_y) <= 0.2) {
+    if( abs(xEst - _tag_abs_x) <= 0.2 && abs(yEst - _tag_abs_y) <= 0.2) {
         _STATE = LAND;
     }
 
@@ -572,6 +641,21 @@ void MissionNode::navToLand() {
 
 // Search for tags
 void MissionNode::miniSearch() {
+
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
 
     // Get the current time
     _miniEnd = time(NULL);
@@ -592,13 +676,28 @@ void MissionNode::miniSearch() {
         _tag_abs_y_pub.publish(_tag_abs_y_msg);
         _tag_abs_z_pub.publish(_tag_abs_z_msg);
     }
-    else if(_miniEnd - _miniStart >= 100) { // Wait for timer to expire before giving up
+    else if(_miniEnd - _miniStart >= _minisearch_t) { // Wait for timer to expire before giving up
         _STATE = GOHOME_LAND;
     }
 }
 
 // Search for tags standing still
 void MissionNode::hoverSearch() {
+
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
 
     // Get the current time
     _hoverEnd = time(NULL);
@@ -636,8 +735,24 @@ void MissionNode::line() {
 }
 
 void MissionNode::dropAlt() {
+
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
-    if (abs(_zc - (_tag_Alt)) < 0.1 ){ // For landing at the landing location
+    if (abs(zEst - (_tag_Alt)) < 0.1 ){ // For landing at the landing location
         _STATE = Hover_Search;
         // Start a timer for the hover
         _hoverStart = time(0);
@@ -653,7 +768,7 @@ int MissionNode::run() {
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
 
-	// get the landing position
+        // get the landing position
         aa241x_mission::RequestLandingPosition srv;
         if (_landing_loc_client.call(srv)) {
              // NOTE: saving the landing East and North coordinates to class member variables
@@ -685,6 +800,10 @@ int MissionNode::run() {
 
 	// main loop
 	while (ros::ok()) {
+
+            // Broadcast whether to use GPS for landing
+            _useGPS_msg.data = _useGPS;
+            _useGPS_pub.publish(_useGPS_msg);
 
             float x0;
             float y0;
@@ -824,9 +943,11 @@ int main(int argc, char **argv) {
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
         float tag_Alt = 3.0;
+        float minisearch_t = 100.0;
+        bool useGPS = true;
 
 	// create the node
-        MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt);
+        MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt, useGPS, minisearch_t);
 
 	// run the node
 	return node.run();}

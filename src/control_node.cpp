@@ -81,6 +81,12 @@ private:
         float _landing_n = 0.0f;
         float _tag_Alt = 0.0f;
 
+        // GPS
+        float _xGPS = 0.0;
+        float _yGPS = 0.0;
+        float _zGPS = 0.0;
+        bool _useGPS = false;
+
         // Physical state variables
         float _xc;
         float _yc;
@@ -113,6 +119,7 @@ private:
         std_msgs::Float64 _yaw_msg;
         std_msgs::Float64 _pitch_msg;
         std_msgs::Float64 _roll_msg;
+        geometry_msgs::PoseStamped _gps_position_msg;
 
         geometry_msgs::TwistStamped _current_local_twist;
 
@@ -173,6 +180,9 @@ private:
         ros::Subscriber _xLoiter_sub;
         ros::Subscriber _yLoiter_sub;
         ros::Subscriber _tag_Alt_sub;
+        ros::Subscriber _gps_position_sub;
+        ros::Subscriber _useGPS_sub;
+
 
         // publishers
         ros::Publisher _cmd_pub;
@@ -192,6 +202,10 @@ private:
         ros::ServiceClient _landing_loc_client;
 
         // callbacks
+
+        void useGPSCallback(const std_msgs::Bool::ConstPtr& msg);
+
+        void gpsPositionCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
         void xLoiterCallback(const std_msgs::Float64::ConstPtr& msg);
 
@@ -295,6 +309,8 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _target_v_sub = _nh.subscribe<std_msgs::Float64>("speed", 10, &ControlNode::targetVCallback, this);
         _xLoiter_sub = _nh.subscribe<std_msgs::Float64>("xLoiter", 10, &ControlNode::xLoiterCallback, this);
         _yLoiter_sub = _nh.subscribe<std_msgs::Float64>("yLoiter", 10, &ControlNode::yLoiterCallback, this);
+        _gps_position_sub = _nh.subscribe<geometry_msgs::PoseStamped>("geodetic_based_lake_lag_pose", 10, &ControlNode::gpsPositionCallback, this);
+        _useGPS_sub = _nh.subscribe<std_msgs::Bool>("useGPS", 10, &ControlNode::useGPSCallback, this);
 
         // April Tag Things:
         _tag_found_sub = _nh.subscribe<std_msgs::Bool>("tagFound", 10, &ControlNode::tag_foundCallback, this);
@@ -329,6 +345,18 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
 
         // service
         _landing_loc_client = _nh.serviceClient<aa241x_mission::RequestLandingPosition>("lake_lag_landing_loc");
+
+}
+
+void ControlNode::useGPSCallback(const std_msgs::Bool::ConstPtr& msg) {
+    _useGPS = msg->data;
+}
+
+void ControlNode::gpsPositionCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+    _gps_position_msg = *msg;
+    _xGPS = _gps_position_msg.pose.position.x;
+    _yGPS = _gps_position_msg.pose.position.y;
+    _zGPS = _gps_position_msg.pose.position.z;
 
 }
 
@@ -648,13 +676,28 @@ void ControlNode::perimeterSearchControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Perform sweep of circle outer perimeter:
     float xL = (radius_Alt_search)*cos(_angle*M_PI/180.0) + _landing_e;
     float yL = (radius_Alt_search)*sin(_angle*M_PI/180.0) + _landing_n;
 
     // Distance between point and current location
-    float xpt = xL-_xc;
-    float ypt = yL-_yc;
+    float xpt = xL-xEst;
+    float ypt = yL-yEst;
     float pt_dist = sqrt(pow(xpt,2)+pow(ypt,2));
 
     // Define gains for point to point travel
@@ -663,9 +706,9 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Proportional position control
-    vel.x = -kpx * (_xc - xL);
-    vel.y = -kpy * (_yc - yL);
-    vel.z = -kpz * (_zc - _tag_Alt);
+    vel.x = -kpx * (xEst - xL);
+    vel.y = -kpy * (yEst - yL);
+    vel.z = -kpz * (zEst - _tag_Alt);
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -684,14 +727,28 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
 // Loiters and looks for apriltags
 void ControlNode::hoverSearchControl(geometry_msgs::Vector3& vel) {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     float kp = 1.0;
     float kpz = 1.0;
-    float landing_offset = 0.0;
 
     // Commnad velocities to control position
-    vel.x = -kp * (_xc - _landing_e); // Hold position landing position
-    vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (_tag_Alt)); // Hold altitude
+    vel.x = -kp * (xEst - _landing_e); // Hold position landing position
+    vel.y = -kp * (yEst - _landing_n); // Don't translate laterally
+    vel.z  = -kpz * (zEst - (_tag_Alt)); // Hold altitude
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -729,15 +786,30 @@ void ControlNode::lineControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::goHomeControl(geometry_msgs::Vector3& vel) {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Define gains for going home
     float kpx = 1.0;
     float kpy = 1.0;
     float kpz = 1.0;
 
     // Define controls on position
-    vel.x = -kpx * (_xc - _landing_e);
-    vel.y = -kpy * (_yc - _landing_n);
-    vel.z = -kpz * (_zc - _flight_alt);
+    vel.x = -kpx * (xEst - _landing_e);
+    vel.y = -kpy * (yEst - _landing_n);
+    vel.z = -kpz * (zEst - _flight_alt);
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -745,21 +817,36 @@ void ControlNode::goHomeControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     // Define gains for going home
     float kpx = 1.0;
     float kpy = 1.0;
     float kpz = 1.0;
 
     // Define controls on position
-    vel.x = -kpx * (_xc - _landing_e);
-    vel.y = -kpy * (_yc - _landing_n);
-    vel.z = -kpz * (_zc - _tag_Alt);
+    vel.x = -kpx * (xEst - _landing_e);
+    vel.y = -kpy * (yEst - _landing_n);
+    vel.z = -kpz * (zEst - _tag_Alt);
 
     // Saturate velocities
     saturateVelocities(vel);
 
-    if (abs(_xc - _landing_e) <= 0.1 && (_yc - _landing_n)){
-        vel.z = -kpz * (_zc-0.0);
+    if (abs(xEst - _landing_e) <= 0.2 && abs(yEst - _landing_n) <= 0.2){
+        vel.z = -kpz * (zEst-0.0);
     }
 
     // Slowing down the z-direction velocity for the last 5 meter drop
@@ -769,14 +856,29 @@ void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
 }
 
 void ControlNode::landControl(geometry_msgs::Vector3& vel) {
+
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
     float kpz = 1.0;
     float kpx = 0.5;
     float kpy = 0.5;
 
     // Command velocities to control position
-    vel.x = -kpx * (_xc - _tag_abs_x); // Don't translate laterally
-    vel.y = -kpx * (_yc - _tag_abs_y); // Don't translate laterally
-    vel.z = -kpz * (_zc - 0.0); //-kpz * (_zc - _z0); // Fix this with offsets
+    vel.x = -kpx * (xEst - _tag_abs_x); // Don't translate laterally
+    vel.y = -kpx * (yEst - _tag_abs_y); // Don't translate laterally
+    vel.z = -kpz * (zEst - 0.0); //-kpz * (_zc - _z0); // Fix this with offsets
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -790,13 +892,28 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
 
 void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
+
     float kp = 1.0;
     float kpz = 1.0;
 
     // Commnad velocities to control position
-    vel.x = -kp * (_xc - _landing_e); // Hold position landing position
-    vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (_tag_Alt)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+    vel.x = -kp * (xEst - _landing_e); // Hold position landing position
+    vel.y = -kp * (yEst - _landing_n); // Don't translate laterally
+    vel.z  = -kpz * (zEst - (_tag_Alt)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
     if (abs(vel.z) > _vzMax/2.0) {
         vel.z = sign(vel.z) * _vzMax/2.0; // saturate vz
@@ -807,14 +924,29 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
 }
 
 void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
+
+    // Decide which position estimates to use
+    float xEst;
+    float yEst;
+    float zEst;
+    if(_useGPS) {
+        xEst = _xGPS;
+        yEst = _yGPS;
+        zEst = _zGPS;
+    }
+    else {
+        xEst = _xc;
+        yEst = _yc;
+        zEst = _zc;
+    }
     float kpx = 1.0;
     float kpy = 1.0;
     float kpz = 1.0;
 
     // Command velocities to control position
-    vel.x = -kpx * (_xc - _tag_abs_x);  // Move to allign the drone with camera x-direction
-    vel.y = -kpy * (_yc - _tag_abs_y);  // Move to allign the drone with camera u-direction
-    vel.z = -kpz * (_zc - (_tag_Alt) );
+    vel.x = -kpx * (xEst - _tag_abs_x);  // Move to allign the drone with camera x-direction
+    vel.y = -kpy * (yEst - _tag_abs_y);  // Move to allign the drone with camera u-direction
+    vel.z = -kpz * (zEst - (_tag_Alt) );
 
     // Saturate velocities
     saturateVelocities(vel);
