@@ -36,7 +36,8 @@
 
 const std::string MINISEARCH = "MINISEARCH";
 const std::string Hover_Search = "Hover_Search";
-
+const std::string LAND = "LAND";
+const std::string Navigate_to_land = "Navigate_to_land";
 
 using namespace std;
 
@@ -246,7 +247,7 @@ int VisionNode::run() {
     while (ros::ok()) {
 
         // Check if we should use the camera..
-        if (_STATE == Hover_Search || _STATE == MINISEARCH ) {
+        if (_STATE == Hover_Search || _STATE == MINISEARCH || _STATE == Navigate_to_land || _STATE == LAND) {
 
 //            // open the camera
 //            ROS_INFO("opening camera");
