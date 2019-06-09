@@ -633,7 +633,7 @@ void MissionNode::navToLand() {
     }
 
     // Check if we are at tag position
-    if( abs(xEst - _tag_abs_x) <= 0.2 && abs(yEst - _tag_abs_y) <= 0.2) {
+    if( abs(_tag_rel_x) <= 0.2 && abs(_tag_rel_y) <= 0.2) {
         _STATE = LAND;
     }
 
