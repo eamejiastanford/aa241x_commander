@@ -631,7 +631,7 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
 
     // Jump at max takeoff speed
    // if ( (_zc - 2.5) <= 0.0 ){ // need to account for _u_offset here..
-    if (zc <= (2.5 + _u_offset)) {
+    if (_zc <= (2.5 + _u_offset)) {
         // Commnad velocities to control position
         vel.x = 0.0; // Don't translate laterally
         vel.y = 0.0; // Don't translate laterally
