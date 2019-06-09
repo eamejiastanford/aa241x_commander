@@ -979,7 +979,7 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float thCamera = _yaw + M_PI / 2.0;
     vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
     vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
-    vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+    vel.z = -kpz * (zEst + 50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
 //    vel.x = -kpx * (xEst - _tag_abs_x);  // Move to allign the drone with camera x-direction
 //    vel.y = -kpy * (yEst - _tag_abs_y);  // Move to allign the drone with camera u-direction
