@@ -157,6 +157,9 @@ private:
         float _tag_abs_x = 0.0f;
         float _tag_abs_y = 0.0f;
         float _tag_abs_z = 0.0f;
+        float _tag_rel_x = 0.0f;
+        float _tag_rel_y = 0.0f;
+        float _tag_rel_z = 0.0f;
 
         float _e_home = 0.0;
         float _n_home = 0.0;
@@ -175,6 +178,9 @@ private:
         ros::Subscriber _tag_abs_x_sub;
         ros::Subscriber _tag_abs_y_sub;
         ros::Subscriber _tag_abs_z_sub;
+        ros::Subscriber _tag_rel_x_sub;
+        ros::Subscriber _tag_rel_y_sub;
+        ros::Subscriber _tag_rel_z_sub;
         ros::Subscriber _e_home_sub;
         ros::Subscriber _n_home_sub;
         ros::Subscriber _xLoiter_sub;
@@ -285,6 +291,9 @@ private:
         void tag_abs_xCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg);
         void tag_abs_zCallback(const std_msgs::Float64::ConstPtr& msg);
+        void tag_rel_xCallback(const std_msgs::Float64::ConstPtr& msg);
+        void tag_rel_yCallback(const std_msgs::Float64::ConstPtr& msg);
+        void tag_rel_zCallback(const std_msgs::Float64::ConstPtr& msg);
         void tagAltCallback(const std_msgs::Float64::ConstPtr& msg);
 
         void e_homeCallback(const std_msgs::Float64::ConstPtr& msg);
@@ -317,6 +326,9 @@ _thetaLine(thetaLine), _xLine(xLine), _yLine(yLine), _vDes(vDes)
         _tag_abs_x_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_x", 10, &ControlNode::tag_abs_xCallback, this);
         _tag_abs_y_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_y", 10, &ControlNode::tag_abs_yCallback, this);
         _tag_abs_z_sub = _nh.subscribe<std_msgs::Float64>("tag_abs_z", 10, &ControlNode::tag_abs_zCallback, this);
+        _tag_rel_x_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_x", 10, &ControlNode::tag_abs_xCallback, this);
+        _tag_rel_y_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_y", 10, &ControlNode::tag_abs_yCallback, this);
+        _tag_rel_z_sub = _nh.subscribe<std_msgs::Float64>("tag_rel_z", 10, &ControlNode::tag_abs_zCallback, this);
         _e_home_sub = _nh.subscribe<std_msgs::Float64>("e_home", 10, &ControlNode::e_homeCallback, this);
         _n_home_sub = _nh.subscribe<std_msgs::Float64>("n_home", 10, &ControlNode::n_homeCallback, this);
         _tag_Alt_sub = _nh.subscribe<std_msgs::Float64>("tag_Alt", 10, &ControlNode::tagAltCallback, this);
@@ -486,6 +498,17 @@ void ControlNode::tag_abs_yCallback(const std_msgs::Float64::ConstPtr& msg){
 void ControlNode::tag_abs_zCallback(const std_msgs::Float64::ConstPtr& msg){
     _tag_abs_z = msg->data;
 }
+void ControlNode::tag_rel_xCallback(const std_msgs::Float64::ConstPtr& msg){
+    _tag_rel_x = msg->data;
+}
+
+void ControlNode::tag_rel_yCallback(const std_msgs::Float64::ConstPtr& msg){
+    _tag_rel_y = msg->data;
+}
+
+void ControlNode::tag_rel_zCallback(const std_msgs::Float64::ConstPtr& msg){
+    _tag_rel_z = msg->data;
+}
 void ControlNode::e_homeCallback(const std_msgs::Float64::ConstPtr& msg){
     _e_home = msg->data;
 }
@@ -607,7 +630,8 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Jump at max takeoff speed
-    if (_zc <= (2.5+_u_offset)){ // need to account for _u_offset here..
+   // if ( (_zc - 2.5) <= 0.0 ){ // need to account for _u_offset here..
+    if (zc <= (2.5 + _u_offset)) {
         // Commnad velocities to control position
         vel.x = 0.0; // Don't translate laterally
         vel.y = 0.0; // Don't translate laterally
@@ -875,9 +899,16 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     float kpy = 0.5;
 
     // Command velocities to control position
-    vel.x = -kpx * (xEst - _tag_abs_x); // Don't translate laterally
-    vel.y = -kpy * (yEst - _tag_abs_y); // Don't translate laterally
+    float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
+    float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
+    float thCamera = _yaw + M_PI / 2.0;
+    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
     vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+
+//    vel.x = -kpx * (xEst - _tag_abs_x); // Don't translate laterally
+//    vel.y = -kpy * (yEst - _tag_abs_y); // Don't translate laterally
+//    vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -943,9 +974,16 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float kpz = 1.0;
 
     // Command velocities to control position
-    vel.x = -kpx * (xEst - _tag_abs_x);  // Move to allign the drone with camera x-direction
-    vel.y = -kpy * (yEst - _tag_abs_y);  // Move to allign the drone with camera u-direction
-    vel.z = -kpz * (zEst - (_tag_Alt) );
+    float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
+    float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
+    float thCamera = _yaw + M_PI / 2.0;
+    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
+    vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+
+//    vel.x = -kpx * (xEst - _tag_abs_x);  // Move to allign the drone with camera x-direction
+//    vel.y = -kpy * (yEst - _tag_abs_y);  // Move to allign the drone with camera u-direction
+//    vel.z = -kpz * (zEst - (_tag_Alt) );
 
     // Saturate velocities
     saturateVelocities(vel);
