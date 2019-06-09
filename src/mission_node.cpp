@@ -486,14 +486,14 @@ void MissionNode::rotateCameraToLagFrame() {
     float z = _tag_rel_z;
 
     // Dot products
-    float bxDotnx = -cos(_pitch)*cos(_yaw);
-    float bxDotny = -sin(_yaw)*cos(_pitch);
+    float bxDotnx = -cos(_pitch)*cos(-_yaw);
+    float bxDotny = -sin(-_yaw)*cos(_pitch);
     float bxDotnz = sin(_pitch);
-    float byDotnx = sin(_pitch)*sin(_roll)*cos(_yaw) - sin(_yaw)*cos(_roll);
-    float byDotny = cos(_roll)*cos(_yaw) + sin(_pitch)*sin(_roll)*sin(_yaw);
+    float byDotnx = sin(_pitch)*sin(_roll)*cos(-_yaw) - sin(-_yaw)*cos(_roll);
+    float byDotny = cos(_roll)*cos(-_yaw) + sin(_pitch)*sin(_roll)*sin(-_yaw);
     float byDotnz = sin(_roll)*cos(_pitch);
-    float bzDotnx = -sin(_roll)*sin(_yaw) - sin(_pitch)*cos(_roll)*cos(_yaw);
-    float bzDotny = sin(_roll)*cos(_yaw)-sin(_pitch)*sin(_yaw)*cos(_roll);
+    float bzDotnx = -sin(_roll)*sin(-_yaw) - sin(_pitch)*cos(_roll)*cos(-_yaw);
+    float bzDotny = sin(_roll)*cos(-_yaw)-sin(_pitch)*sin(-_yaw)*cos(_roll);
     float bzDotnz = -cos(_pitch)*cos(_roll);
 
     // Rotate the vector and move to lake frame (Distances from center of Lake Lag)
@@ -763,7 +763,7 @@ void MissionNode::dropAlt() {
 int MissionNode::run() {
 
         // Initially, only valid state is takeoff
-        _STATE = TAKEOFF;
+        _STATE = CAMERA_TEST; //TAKEOFF;
 
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
@@ -938,13 +938,13 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST, LANDINGTEST
 
-        std::string mission_type = LANDINGTEST;
+        std::string mission_type = CAMERATEST;
         float target_v =4.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
         float tag_Alt = 4.0;
         float minisearch_t = 100.0;
-        bool useGPS = false;
+        bool useGPS = true;
 
 	// create the node
         MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt, useGPS, minisearch_t);
