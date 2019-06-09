@@ -6,7 +6,7 @@
 	<!-- 	appropriate ros bags -->
 
 	<!-- launch file argument to be able to set this without having to constantly edit the launch file -->
-	<arg name="mission_index" value="1" doc="index of the desired mission to run" />
+	<arg name="mission_index" value="2" doc="index of the desired mission to run" />
 
 	<!-- mavros to the pixhawk -->
 	<include file="$(find aa241x_mission)/launch/mavros_pixhawk.launch" >

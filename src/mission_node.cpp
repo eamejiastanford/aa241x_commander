@@ -763,7 +763,7 @@ void MissionNode::dropAlt() {
 int MissionNode::run() {
 
         // Initially, only valid state is takeoff
-        _STATE = CAMERA_TEST; //TAKEOFF;
+        _STATE = TAKEOFF;
 
         waitForFCUConnection();
         ROS_INFO("connected to the FCU");
@@ -938,11 +938,11 @@ int main(int argc, char **argv) {
 	ros::NodeHandle private_nh("~");
         // Specify Mission Type: OPTIONS: LINEANDHOME, OUTERPERIM, SPIRAL, HOVERTEST, CAMERATEST, LANDINGTEST
 
-        std::string mission_type = CAMERATEST;
+        std::string mission_type = SPIRAL;
         float target_v =4.0;
-        float flight_alt = 15.0;
-        float loiter_t = 0.0;//38.0;
-        float tag_Alt = 3.0;
+        float flight_alt = 35.0;
+        float loiter_t = 22.0;//38.0;
+        float tag_Alt = 5.0;
         float minisearch_t = 100.0;
         bool useGPS = true;
 

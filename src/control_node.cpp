@@ -870,7 +870,7 @@ void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
     saturateVelocities(vel);
 
     if (abs(xEst - _landing_e) <= 0.2 && abs(yEst - _landing_n) <= 0.2){
-        vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+        vel.z = -kpz * (zEst +50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
     }
 
     // Slowing down the z-direction velocity to 0.5 m/s
@@ -904,7 +904,7 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     float thCamera = _yaw + M_PI / 2.0;
     vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
     vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
-    vel.z = -kpz * (zEst + 1.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+    vel.z = -kpz * (zEst + 50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
 //    vel.x = -kpx * (xEst - _tag_abs_x); // Don't translate laterally
 //    vel.y = -kpy * (yEst - _tag_abs_y); // Don't translate laterally
