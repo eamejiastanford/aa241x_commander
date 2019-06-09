@@ -17,8 +17,8 @@
 		<arg name="mission_index" value="$(arg mission_index)" />
 		<!-- <arg name="landing_lat" value="37.422748" /> -->
 		<!-- <arg name="landing_lon" value="-122.174234" /> -->
-		<arg name="landing_lat" value = "37.4240602" />
-		<arg name="landing_lon" value = "-122.1775560" />
+		<arg name="landing_lat" value = "37.423963" />
+		<arg name="landing_lon" value = "-122.177573" />
 	</include>
 
 	<!-- the control node -->

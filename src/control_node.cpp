@@ -719,7 +719,7 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
     }
     if (_angle >= 360){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
         _angle = 0;
-        radius_Alt_search = radius_Alt_search + 1.0;
+        radius_Alt_search = radius_Alt_search + 2.0;
     }
 
 }
