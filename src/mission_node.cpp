@@ -942,7 +942,7 @@ int main(int argc, char **argv) {
         float target_v =4.0;
         float flight_alt = 15.0;
         float loiter_t = 0.0;//38.0;
-        float tag_Alt = 4.0;
+        float tag_Alt = 3.0;
         float minisearch_t = 100.0;
         bool useGPS = true;
 
