@@ -426,33 +426,32 @@ void ControlNode::yawControl(mavros_msgs::PositionTarget& cmd) {
     // No yaw if we aren't moving very fast
     float vTotal = sqrt(pow(_vyc,2) + pow(_vxc,2));
     if( vTotal < 1.0) {
-        cmd.yaw_rate = 0;
+        cmd.yaw_rate = 0.0;
     }
     else {
 
         // Set desired yaw angle based on velocity in x-y N-E plane
         float yawDes = atan2(_vyc, _vxc);
         float mappedYaw;
-        if (yawDes >= 0) {
+        if (yawDes >= 0.0) {
             yawDes = atan2(_vyc, _vxc);
         }
         else {
-            yawDes = 2 * M_PI + atan2(_vyc, _vxc); // map atan2 to 0 -> 360 degree angle
+            yawDes = 2.0 * M_PI + atan2(_vyc, _vxc); // map atan2 to 0 -> 360 degree angle
         }
-        if (_yaw >= 0) { // yaw measurement is positive already
+        if (_yaw >= 0.0) { // yaw measurement is positive already
             mappedYaw = _yaw;
         }
         else { // yaw measurement is negative
-            mappedYaw = 2 * M_PI + _yaw;
+            mappedYaw = 2.0 * M_PI + _yaw;
         }
 
         if (abs(mappedYaw-yawDes) <= M_PI){
             cmd.yaw_rate = -k_yaw * (mappedYaw-yawDes);
         }
         else {
-            cmd.yaw_rate = sign(mappedYaw - yawDes) * k_yaw * (2*M_PI - abs(mappedYaw-yawDes));
+            cmd.yaw_rate = sign(mappedYaw - yawDes) * k_yaw * (2.0 * M_PI - abs(mappedYaw-yawDes));
         }
-
     }
 
     // Saturate the yaw rate
@@ -476,7 +475,6 @@ void ControlNode::takeoffControl(geometry_msgs::Vector3& vel) {
         if (abs(vel.z) > _vzTakeoff) {
             vel.z = sign(vel.z) * _vzTakeoff; // saturate with takeoff speed
         }
-
     }
     else{
         // Commnad velocities to control position
@@ -554,7 +552,7 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
     // Proportional position control
     vel.x = -kpx * (_xc - xL);
     vel.y = -kpy * (_yc - yL);
-    vel.z = -kpz * (_zc - _tag_Alt);
+    vel.z = -kpz * (_zc - _tag_Alt - _u_offset);
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -563,8 +561,8 @@ void ControlNode::miniSearchControl(geometry_msgs::Vector3& vel) {
     if (pt_dist <= 0.5){
         _angle = _angle+5;
     }
-    if (_angle >= 360){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
-        _angle = 0;
+    if (_angle >= 375){ // 360 + entry_angle){ // Incorporates angle at which the drone enters the ring
+        _angle = 15;
         radius_Alt_search = radius_Alt_search + 2.0;
     }
 }
@@ -578,7 +576,7 @@ void ControlNode::hoverSearchControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (_tag_Alt)); // Hold altitude
+    vel.z  = -kpz * (_zc - (_tag_Alt + _u_offset)); // Hold altitude
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -610,7 +608,7 @@ void ControlNode::goHomeLandControl(geometry_msgs::Vector3& vel) {
     // Define controls on position
     vel.x = -kpx * (_xc - _landing_e);
     vel.y = -kpy * (_yc - _landing_n);
-    vel.z = -kpz * (_zc - _tag_Alt);
+    vel.z = -kpz * (_zc - _tag_Alt - _u_offset);
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -633,9 +631,9 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     // Command velocities to control position
     float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
     float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
-    float thCamera = _yaw + M_PI / 2.0;
-    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
-    vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
+    float thCamera = _yaw + M_PI;
+    vel.x = v1 * cos(thCamera) - v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) + v2 * cos(thCamera);
     vel.z = -kpz * (_zc + 50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
@@ -655,7 +653,7 @@ void ControlNode::dropAltControl(geometry_msgs::Vector3& vel) {
     // Commnad velocities to control position
     vel.x = -kp * (_xc - _landing_e); // Hold position landing position
     vel.y = -kp * (_yc - _landing_n); // Don't translate laterally
-    vel.z  = -kpz * (_zc - (_tag_Alt)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
+    vel.z  = -kpz * (_zc - (_tag_Alt+_u_offset)); // Drop to altitude of 5m //= -kpz * (_zc - (_flight_alt - 5.0)); // Drop 5 meters
 
     if (abs(vel.z) > _vzMax/2.0) {
         vel.z = sign(vel.z) * _vzMax/2.0; // saturate vz
@@ -674,10 +672,10 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     // Command velocities to control position
     float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
     float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
-    float thCamera = _yaw + M_PI / 2.0;
-    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
-    vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
-    vel.z = -kpz * (_zc - _tag_Alt); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+    float thCamera = _yaw + M_PI;
+    vel.x = v1 * cos(thCamera) - v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) + v2 * cos(thCamera);
+    vel.z = -kpz * (_zc - _tag_Alt - _u_offset); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
     saturateVelocities(vel);

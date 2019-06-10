@@ -58,7 +58,7 @@ public:
 	/**
 	 * example constructor.
 	 */
-        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, float minisearch_t);
+        MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, float minisearch_t, bool simple_land);
 
 	/**
 	 * the main loop to be run for this node (called by the `main` function)
@@ -76,6 +76,7 @@ private:
         std::string _STATE;
         float _flight_alt = 0.0; // from center of lake lag
         int _n_cycles = 0;
+        bool _simple_land = false;
         float _target_v = 0.0;
         float _tag_Alt = 0.0;
 
@@ -118,7 +119,7 @@ private:
 	float _landing_n = 0.0f;
 
         // Time for minisearch
-        float _minisearch_t;
+        float _minisearch_t = 0.0;
 
         // Position of april tag from the drone camera
         float _tag_rel_x = 0.0f; // Camera x
@@ -143,8 +144,8 @@ private:
         int _n_cycles_target = 0;
 
         // Extra data for state machine
-        float _target_time = 0.0;
-        float _loop_closure_time = 0.0;
+        float _target_time = 0.0f;
+        float _loop_closure_time = 0.0f;
         time_t _start;
         time_t _end;
         time_t _hoverStart;
@@ -269,8 +270,8 @@ private:
 };
 
 
-MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, float minisearch_t) :
-    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t), _tag_Alt(tag_Alt), _minisearch_t(minisearch_t){
+MissionNode::MissionNode(std::string mission_type, float target_v, float flight_alt, float loiter_t, float tag_Alt, float minisearch_t, bool simple_land) :
+    _MISSIONTYPE(mission_type), _target_v(target_v), _flight_alt(flight_alt), _target_time(loiter_t), _tag_Alt(tag_Alt), _minisearch_t(minisearch_t), _simple_land(simple_land){
 
 	// subscribe to the desired topics
 	_state_sub = _nh.subscribe<mavros_msgs::State>("mavros/state", 1, &MissionNode::stateCallback, this);
@@ -414,8 +415,8 @@ void MissionNode::goHome() {
                 int id_current = _id_total[index];
                 vector<float> n_current = _n_total[index];
                 vector<float> e_current = _e_total[index];
-                float n_total = 0.0;
-                float e_total = 0.0;
+                float n_total = 0.0f;
+                float e_total = 0.0f;
                 for(int i=0; i<n_current.size(); ++i) {
                         n_total += n_current[i];
                         e_total += e_current[i];
@@ -499,7 +500,12 @@ void MissionNode::hoverSearch() {
 
     // Check if we found a tag
     if(_tag_found && (_hoverEnd - _hoverStart) >= 10) {
+        if (_simple_land) {
+        _STATE = GOHOME_LAND;
+        }
+        else {
         _STATE  = Navigate_to_land;
+        }
     }
     else if(!_tag_found && (_hoverEnd - _hoverStart) >= 10) { // Wait for timer to expire before minisearch
         // Start a timer for the minisearch
@@ -511,7 +517,7 @@ void MissionNode::hoverSearch() {
 
 void MissionNode::dropAlt() {
     // If the altitude has dropped below 6.0 meters, switch to landing (slows down descent)
-    if (abs(_zc - (_tag_Alt)) < 0.5 ){ // For landing at the landing location
+    if (abs(_zc - (_tag_Alt + _u_offset)) < 0.5 ){ // For landing at the landing location
         _STATE = Hover_Search;
         // Start a timer for the hover
         _hoverStart = time(0);
@@ -661,9 +667,10 @@ int main(int argc, char **argv) {
         float loiter_t = 30.0;//38.0;
         float tag_Alt = 4.0;
         float minisearch_t = 100.0;
+        bool _simple_land = false;
 
 	// create the node
-        MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt, minisearch_t);
+        MissionNode node(mission_type, target_v, flight_alt, loiter_t, tag_Alt, minisearch_t, _simple_land);
 
 	// run the node
 	return node.run();}
