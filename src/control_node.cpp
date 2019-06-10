@@ -632,8 +632,8 @@ void ControlNode::landControl(geometry_msgs::Vector3& vel) {
     float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
     float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
     float thCamera = _yaw + M_PI;
-    vel.x = v1 * cos(thCamera) - v2 * sin(thCamera);
-    vel.y = v1 * sin(thCamera) + v2 * cos(thCamera);
+    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) - v2 * cos(thCamera);
     vel.z = -kpz * (_zc + 50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
@@ -673,8 +673,8 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float v1 = -kpx * (-_tag_rel_x); // Don't translate laterally, camera frame x
     float v2 = -kpy * (-_tag_rel_y); // Don't translate laterally, camera frame y
     float thCamera = _yaw + M_PI;
-    vel.x = v1 * cos(thCamera) - v2 * sin(thCamera);
-    vel.y = v1 * sin(thCamera) + v2 * cos(thCamera);
+    vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
+    vel.y = v1 * sin(thCamera) - v2 * cos(thCamera);
     vel.z = -kpz * (_zc - _tag_Alt - _u_offset); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities

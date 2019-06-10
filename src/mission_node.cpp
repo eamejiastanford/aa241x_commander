@@ -501,10 +501,10 @@ void MissionNode::hoverSearch() {
     // Check if we found a tag
     if(_tag_found && (_hoverEnd - _hoverStart) >= 10) {
         if (_simple_land) {
-        _STATE = GOHOME_LAND;
+            _STATE = GOHOME_LAND;
         }
         else {
-        _STATE  = Navigate_to_land;
+            _STATE  = Navigate_to_land;
         }
     }
     else if(!_tag_found && (_hoverEnd - _hoverStart) >= 10) { // Wait for timer to expire before minisearch
