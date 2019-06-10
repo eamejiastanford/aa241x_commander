@@ -97,9 +97,9 @@ private:
         // Perimeter search variables
         int _angle = -10;
         int _cycle = 0;
-        float _outer_radius = 160.0;
+        float _outer_radius = 160.0f;
         float _radius = _outer_radius; //160
-        float radius_Alt_search = 0.5;
+        float radius_Alt_search = 0.5f;
 
         // offset information
         float _e_offset = 0.0f;
@@ -677,7 +677,7 @@ void ControlNode::navToLandControl(geometry_msgs::Vector3& vel) {
     float thCamera = _yaw + M_PI / 2.0;
     vel.x = v1 * cos(thCamera) + v2 * sin(thCamera);
     vel.y = v1 * sin(thCamera) - v2 * sin(thCamera);
-    vel.z = -kpz * (_zc + 50.0); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
+    vel.z = -kpz * (_zc - _tag_Alt); // Offset changed to +0.5 instead of 0.0 to ensure touchdown
 
     // Saturate velocities
     saturateVelocities(vel);
@@ -735,9 +735,9 @@ int ControlNode::run() {
         // the velocity information for the command
         // NOTE: this is defined in ENU
         geometry_msgs::Vector3 vel;
-        vel.x = 0;	// E
-        vel.y = 0;	// N
-        vel.z = 0;	// U
+        vel.x = 0.0;	// E
+        vel.y = 0.0;	// N
+        vel.z = 0.0;	// U
 
         // set the loop rate in [Hz]
         // NOTE: must be faster than 2Hz
@@ -754,14 +754,14 @@ int ControlNode::run() {
                 if (_current_state.mode != "OFFBOARD") {
 
                         // Don't move!
-                        vel.x = 0;
-                        vel.y = 0;
-                        vel.z = 0;
+                        vel.x = 0.0;
+                        vel.y = 0.0;
+                        vel.z = 0.0;
 
                         // timestamp the message and send it
                         cmd.header.stamp = ros::Time::now();
                         cmd.velocity = vel;
-                        cmd.yaw_rate = 0;
+                        cmd.yaw_rate = 0.0;
                         _cmd_pub.publish(cmd);
 
                         // run the ros components
